@@ -11,6 +11,7 @@
       "128": "public/icon-128.png"
     }
   },
+  "options_page": "src/options/options.html",
   "icons": {
     "16": "public/icon-16.png",
     "48": "public/icon-48.png",

@@ -39,6 +39,8 @@ console.log('[bob] content script loaded on ' + location.href);
           urlPattern: response.urlPattern,
           userPrompt: prompt,
           enabled: true,
+          runCount: 0,
+          errorCount: 0,
         },
       });
 

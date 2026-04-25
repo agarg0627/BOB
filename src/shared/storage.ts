@@ -40,6 +40,8 @@ export const Storage = {
   async add(input: Omit<Feature, 'id' | 'createdAt'>): Promise<Feature> {
     const feature: Feature = {
       ...input,
+      runCount: input.runCount ?? 0,
+      errorCount: input.errorCount ?? 0,
       id: crypto.randomUUID(),
       createdAt: Date.now(),
     };
