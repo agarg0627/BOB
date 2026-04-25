@@ -67,19 +67,16 @@ npm run typecheck  # tsc --noEmit
         storage.ts          chrome.storage CRUD for features + settings
         messages.ts         Message-passing helper
 
-## File ownership (Phase 2)
+## File ownership (Phase 3)
 
 | Person | Files |
 |---|---|
-| A | `src/background/llm.ts`, `src/background/providers/*`, `src/background/settings.ts`, `src/options/*` |
-| B | `src/content/overlay/*`, `src/content/overlay/preview.ts` |
-| C | `src/content/dom-prune.ts` |
-| D | `src/popup/*`, `src/background/error-recorder.ts` |
+| A | `src/background/agent.ts`, `src/background/tools.ts`, `src/background/providers/*` (extend for tool use), `src/background/providers/prompt.ts` (rewrite), `src/background/llm.ts` (extend) |
+| B | `src/content/spa.ts`, `src/content/observer-helper.ts`, `src/content/lifecycle.ts` |
+| C | `src/background/suggestions-engine.ts`, `src/content/behavior-tracker.ts`, `src/popup/suggestions-section.ts`, `src/popup/suggestions-section.css` |
+| D | `src/content/overlay/*` (extend), `src/popup/popup.ts` and `popup.css` (extend), `src/popup/iteration.ts` |
 
-Nobody touches `src/background/index.ts`, `src/content/index.ts`,
-or `src/content/injector.ts` during Phase 2 development. Those are
-integration files — modifications happen only at merge time, by
-Person A, using the integration patches each branch provides.
+Untouchable during Phase 3 dev: `src/background/index.ts`, `src/content/index.ts`, `src/content/injector.ts`. Modified at integration only.
 
 ## API key sources
 

@@ -6,6 +6,46 @@ export interface ExtensionSettings {
   model?: string;
 }
 
+export interface ToolCall {
+  id: string;
+  name: 'query_dom' | 'test_code';
+  input: Record<string, unknown>;
+}
+
+export interface ToolResult {
+  toolCallId: string;
+  result: string;
+  isError?: boolean;
+}
+
+export interface AgentTrace {
+  iterations: number;
+  toolCalls: { name: string; input: unknown; resultPreview: string }[];
+  retries: number;
+}
+
+export interface UserBehaviorEvent {
+  type: 'click_close' | 'click_dismiss' | 'hide_element' | 'time_on_site';
+  url: string;
+  hostname: string;
+  selector?: string;
+  text?: string;
+  timestamp: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface Suggestion {
+  id: string;
+  hostname: string;
+  proposedPrompt: string;
+  rationale: string;
+  confidence: number;
+  evidenceCount: number;
+  createdAt: number;
+  dismissed?: boolean;
+}
+
+
 export interface Feature {
   id: string;
   name: string;
@@ -19,6 +59,9 @@ export interface Feature {
   lastRanAt?: number;
   runCount: number;
   errorCount: number;
+  parentFeatureId?: string;
+  iterationNumber?: number;
+  agentTrace?: AgentTrace;
 }
 
 export interface GenerateRequest {
@@ -26,6 +69,9 @@ export interface GenerateRequest {
   url: string;
   domSnapshot?: string;
   existingCode?: string;
+  existingFeatureName?: string;
+  previousError?: string;
+  tabId?: number;
 }
 
 export interface GenerateResponse {
@@ -36,7 +82,16 @@ export interface GenerateResponse {
 }
 
 export type Message =
-  | { type: 'GENERATE_FEATURE'; req: GenerateRequest }
+| { type: 'GENERATE_FEATURE'
+  | { type: 'TOOL_QUERY_DOM'; selector: string; tabId: number }
+  | { type: 'TOOL_TEST_CODE'; code: string; tabId: number }
+  | { type: 'TRACK_BEHAVIOR'; event: UserBehaviorEvent }
+  | { type: 'GET_SUGGESTIONS'; hostname?: string }
+  | { type: 'DISMISS_SUGGESTION'; id: string }
+  | { type: 'ACCEPT_SUGGESTION'; id: string }
+  | { type: 'BULK_TOGGLE'; enabled: boolean }
+  | { type: 'BULK_DELETE' }
+  | { type: 'OPEN_OVERLAY_FOR_EDIT'; featureId: string }; req: GenerateRequest }
   | { type: 'INSTALL_FEATURE'; feature: Omit<Feature, 'id' | 'createdAt'> }
   | { type: 'GET_FEATURES_FOR_URL'; url: string }
   | { type: 'LIST_FEATURES' }

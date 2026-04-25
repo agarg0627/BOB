@@ -1,5 +1,5 @@
 // Owned by Person C.
-import type { Feature } from './types';
+import type { Feature, Suggestion, UserBehaviorEvent } from './types';
 
 const KEY = 'features';
 
@@ -73,5 +73,55 @@ export const Storage = {
   async matching(url: string): Promise<Feature[]> {
     const all = await readAll();
     return all.filter((f) => f.enabled && globToRegex(f.urlPattern).test(url));
+  },
+};
+
+
+// --- Phase 3: Behavior tracking and Suggestions ---
+
+const BEHAVIOR_KEY = 'behavior';
+const SUGGESTIONS_KEY = 'suggestions';
+const MAX_BEHAVIOR_EVENTS = 500;
+
+export const Behavior = {
+  async append(event: UserBehaviorEvent): Promise<void> {
+    const stored = (await chrome.storage.local.get(BEHAVIOR_KEY))[BEHAVIOR_KEY];
+    const all = (Array.isArray(stored) ? stored : []) as UserBehaviorEvent[];
+    all.push(event);
+    if (all.length > MAX_BEHAVIOR_EVENTS) {
+      all.splice(0, all.length - MAX_BEHAVIOR_EVENTS);
+    }
+    await chrome.storage.local.set({ [BEHAVIOR_KEY]: all });
+  },
+  async list(hostname?: string): Promise<UserBehaviorEvent[]> {
+    const stored = (await chrome.storage.local.get(BEHAVIOR_KEY))[BEHAVIOR_KEY];
+    const all = (Array.isArray(stored) ? stored : []) as UserBehaviorEvent[];
+    return hostname ? all.filter((e) => e.hostname === hostname) : all;
+  },
+  async clear(): Promise<void> {
+    await chrome.storage.local.set({ [BEHAVIOR_KEY]: [] });
+  },
+};
+
+export const Suggestions = {
+  async list(): Promise<Suggestion[]> {
+    const stored = (await chrome.storage.local.get(SUGGESTIONS_KEY))[SUGGESTIONS_KEY];
+    return (Array.isArray(stored) ? stored : []) as Suggestion[];
+  },
+  async upsert(s: Suggestion): Promise<void> {
+    const all = await Suggestions.list();
+    const i = all.findIndex((x) => x.id === s.id);
+    if (i >= 0) all[i] = s;
+    else all.push(s);
+    await chrome.storage.local.set({ [SUGGESTIONS_KEY]: all });
+  },
+  async remove(id: string): Promise<void> {
+    const all = await Suggestions.list();
+    await chrome.storage.local.set({
+      [SUGGESTIONS_KEY]: all.filter((s) => s.id !== id),
+    });
+  },
+  async clear(): Promise<void> {
+    await chrome.storage.local.set({ [SUGGESTIONS_KEY]: [] });
   },
 };
