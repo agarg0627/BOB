@@ -1,1 +1,133 @@
-/* Owned by Person B. Stub — implement in Phase 1. */
+/* Owned by Person B. Injected as <style> inside the shadow root. */
+
+:host {
+  all: initial;
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  pointer-events: none;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
+    Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
+  color: #f5f5f5;
+}
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 150ms ease-out;
+  -webkit-font-smoothing: antialiased;
+}
+
+.backdrop[data-state="open"],
+.backdrop[data-state="loading"],
+.backdrop[data-state="error"] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.modal {
+  width: 520px;
+  max-width: calc(100vw - 32px);
+  background: #1a1a1a;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(0, 0, 0, 0.4);
+  padding: 14px 16px;
+  transform: translateY(-4px);
+  transition: transform 150ms ease-out;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.backdrop[data-state="open"] .modal,
+.backdrop[data-state="loading"] .modal,
+.backdrop[data-state="error"] .modal {
+  transform: translateY(0);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.prompt {
+  flex: 1;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  color: #f5f5f5;
+  font: inherit;
+  font-size: 15px;
+  padding: 6px 2px;
+  caret-color: #f5f5f5;
+}
+
+.prompt::placeholder {
+  color: rgba(245, 245, 245, 0.45);
+}
+
+.prompt:disabled {
+  color: rgba(245, 245, 245, 0.5);
+  cursor: progress;
+}
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(245, 245, 245, 0.2);
+  border-top-color: #f5f5f5;
+  animation: bob-spin 0.8s linear infinite;
+  display: none;
+  flex: 0 0 auto;
+}
+
+.backdrop[data-state="loading"] .spinner {
+  display: block;
+}
+
+@keyframes bob-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.status {
+  min-height: 0;
+  font-size: 12px;
+  color: #ff8a8a;
+  display: none;
+}
+
+.backdrop[data-state="error"] .status {
+  display: block;
+}
+
+.hint {
+  font-size: 11px;
+  color: rgba(245, 245, 245, 0.4);
+  display: flex;
+  justify-content: space-between;
+  user-select: none;
+}
+
+kbd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: rgba(245, 245, 245, 0.7);
+}
