@@ -465,3 +465,242 @@ kbd {
 .btn-primary.installed .spinner-sm {
   display: none;
 }
+
+/* === Refine state === */
+
+.backdrop[data-state="refine"] .view-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: bob-fade-in 150ms ease-out;
+}
+
+/* === Textarea prompt (replaces single-line input) === */
+
+textarea.prompt {
+  flex: 1;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  color: #f5f5f5;
+  font: inherit;
+  font-size: 15px;
+  padding: 6px 2px;
+  caret-color: #f5f5f5;
+  resize: none;
+  min-height: 44px;
+  max-height: 140px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.4;
+}
+
+textarea.prompt::placeholder {
+  color: rgba(245, 245, 245, 0.45);
+}
+
+textarea.prompt:disabled {
+  color: rgba(245, 245, 245, 0.5);
+  cursor: progress;
+}
+
+/* === Suggestion chips === */
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chips[hidden] {
+  display: none;
+}
+
+.chip {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  color: rgba(245, 245, 245, 0.7);
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.chip:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #f5f5f5;
+}
+
+.chip-done {
+  background: rgba(46, 160, 67, 0.15);
+  border-color: rgba(46, 160, 67, 0.3);
+  color: #5fd87f;
+}
+
+.chip-done:hover {
+  background: rgba(46, 160, 67, 0.25);
+  border-color: rgba(46, 160, 67, 0.5);
+  color: #7ae89a;
+}
+
+/* === Mic button === */
+
+.mic-btn {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: transparent;
+  color: rgba(245, 245, 245, 0.6);
+  font-size: 16px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+  line-height: 1;
+}
+
+.mic-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #f5f5f5;
+}
+
+.mic-btn.recording {
+  background: rgba(217, 80, 74, 0.2);
+  border-color: #d9504a;
+  color: #ff6b6b;
+  animation: bob-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes bob-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(217, 80, 74, 0.3); }
+  50% { box-shadow: 0 0 0 6px rgba(217, 80, 74, 0); }
+}
+
+/* === Effort toggle === */
+
+.prompt-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 24px;
+}
+
+.effort-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 11px;
+  color: rgba(245, 245, 245, 0.5);
+}
+
+.effort-toggle:hover {
+  color: rgba(245, 245, 245, 0.7);
+}
+
+.effort-checkbox {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.effort-slider {
+  width: 28px;
+  height: 16px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.12);
+  position: relative;
+  transition: background 200ms ease;
+  flex: 0 0 auto;
+}
+
+.effort-slider::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(245, 245, 245, 0.5);
+  transition: transform 200ms ease, background 200ms ease;
+}
+
+.effort-checkbox:checked + .effort-slider {
+  background: rgba(139, 92, 246, 0.5);
+}
+
+.effort-checkbox:checked + .effort-slider::after {
+  transform: translateX(12px);
+  background: #a78bfa;
+}
+
+.effort-label {
+  white-space: nowrap;
+}
+
+/* === Refine banner === */
+
+.refine-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(46, 160, 67, 0.1);
+  border: 1px solid rgba(46, 160, 67, 0.25);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: rgba(245, 245, 245, 0.85);
+}
+
+.refine-banner[hidden] {
+  display: none;
+}
+
+.refine-banner-label {
+  color: #5fd87f;
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.refine-banner-name {
+  font-weight: 600;
+  color: #f5f5f5;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.refine-banner-close {
+  flex: 0 0 auto;
+  background: transparent;
+  border: 0;
+  color: rgba(245, 245, 245, 0.5);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.refine-banner-close:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #f5f5f5;
+}

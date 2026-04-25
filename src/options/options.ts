@@ -155,4 +155,125 @@ async function init(): Promise<void> {
   }
 }
 
+// ---- Demo seed ----
+
+const DEMO_FEATURES = [
+  {
+    name: 'Hide YouTube Shorts',
+    description: 'Hides Shorts shelves from the YouTube homepage.',
+    urlPattern: '*://*.youtube.com/*',
+    userPrompt: 'Hide YouTube Shorts',
+    code: `(function(){try{
+  var slug='hide-yt-shorts';
+  if(window.__bobObserve){
+    window.__bobObserve(slug,function(){
+      document.querySelectorAll('ytd-rich-shelf-renderer, ytd-reel-shelf-renderer').forEach(function(el){
+        if(el.getAttribute('data-bob')===slug)return;
+        el.setAttribute('data-bob',slug);
+        el.style.display='none';
+      });
+    });
+  }else{
+    document.querySelectorAll('ytd-rich-shelf-renderer, ytd-reel-shelf-renderer').forEach(function(el){
+      el.setAttribute('data-bob',slug);
+      el.style.display='none';
+    });
+  }
+}catch(e){console.error('[bob]',e);window.__bobLastError=String(e);}})();`,
+  },
+  {
+    name: 'HN Star Titles',
+    description: 'Prepends a star emoji to every Hacker News story title.',
+    urlPattern: '*://news.ycombinator.com/*',
+    userPrompt: 'Add stars to HN titles',
+    code: `(function(){try{
+  var slug='hn-star-titles';
+  function apply(){
+    document.querySelectorAll('.titleline > a:first-child').forEach(function(a){
+      if(a.getAttribute('data-bob')===slug)return;
+      a.setAttribute('data-bob',slug);
+      a.textContent='\\u2b50 '+a.textContent;
+    });
+  }
+  if(window.__bobObserve){window.__bobObserve(slug,apply);}
+  else{apply();}
+}catch(e){console.error('[bob]',e);window.__bobLastError=String(e);}})();`,
+  },
+  {
+    name: 'Wikipedia Dim Sidebar',
+    description: 'Dims the Wikipedia sidebar to reduce visual clutter.',
+    urlPattern: '*://*.wikipedia.org/*',
+    userPrompt: 'Dim Wikipedia sidebar',
+    code: `(function(){try{
+  var slug='wp-dim-sidebar';
+  var el=document.getElementById('mw-panel')||document.getElementById('mw-navigation');
+  if(el&&!el.getAttribute('data-bob')){
+    el.setAttribute('data-bob',slug);
+    el.style.opacity='0.5';
+  }
+}catch(e){console.error('[bob]',e);window.__bobLastError=String(e);}})();`,
+  },
+  {
+    name: 'Reddit Hide Ads',
+    description: 'Hides promoted posts on Reddit.',
+    urlPattern: '*://*.reddit.com/*',
+    userPrompt: 'Hide Reddit ads',
+    code: `(function(){try{
+  var slug='reddit-hide-ads';
+  function apply(){
+    document.querySelectorAll('[data-promoted="true"], shreddit-ad-post').forEach(function(el){
+      if(el.getAttribute('data-bob')===slug)return;
+      el.setAttribute('data-bob',slug);
+      el.style.display='none';
+    });
+  }
+  if(window.__bobObserve){window.__bobObserve(slug,apply);}
+  else{apply();}
+}catch(e){console.error('[bob]',e);window.__bobLastError=String(e);}})();`,
+  },
+  {
+    name: 'Example.com Tint',
+    description: 'Applies a soft blue tint to example.com.',
+    urlPattern: '*://example.com/*',
+    userPrompt: 'Tint example.com blue',
+    code: `(function(){try{
+  var slug='example-tint';
+  if(document.body.getAttribute('data-bob')===slug)return;
+  document.body.setAttribute('data-bob',slug);
+  document.body.style.backgroundColor='#e8f0fe';
+}catch(e){console.error('[bob]',e);window.__bobLastError=String(e);}})();`,
+  },
+];
+
+const loadDemosBtn = document.getElementById('load-demos') as HTMLButtonElement | null;
+const demoStatusEl = document.getElementById('demo-status') as HTMLSpanElement | null;
+
+async function loadDemos(): Promise<void> {
+  if (!loadDemosBtn) return;
+  loadDemosBtn.disabled = true;
+  let count = 0;
+  for (const demo of DEMO_FEATURES) {
+    try {
+      await chrome.runtime.sendMessage({
+        type: 'INSTALL_FEATURE',
+        feature: {
+          ...demo,
+          enabled: true,
+          runCount: 0,
+          errorCount: 0,
+        },
+      });
+      count++;
+    } catch {
+      // skip individual failures
+    }
+  }
+  if (demoStatusEl) {
+    demoStatusEl.textContent = `Loaded ${count} demo features.`;
+    demoStatusEl.classList.add('status-ok');
+  }
+}
+
+loadDemosBtn?.addEventListener('click', () => void loadDemos());
+
 void init();

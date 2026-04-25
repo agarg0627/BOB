@@ -1,12 +1,17 @@
 import overlayCss from './overlay.css?inline';
 import type { Feature, GenerateResponse } from '../../shared/types';
 import { buildPreviewView, populatePreview, showToast, type PreviewElements } from './preview';
+import { isVoiceSupported, startVoiceInput } from '../voice-input';
+
+// ---- Public types ----
 
 export interface OnGenerateOptions {
   existingCode?: string;
   existingFeatureName?: string;
   parentFeatureId?: string;
   signal?: AbortSignal;
+  refinementHistory?: Array<{ role: 'user' | 'assistant'; content: string }>;
+  effortMode?: 'standard' | 'high';
 }
 
 export interface OverlayCallbacks {
@@ -20,10 +25,10 @@ export interface OverlayCallbacks {
       parentFeatureId?: string;
       iterationNumber?: number;
     },
-  ) => Promise<void>;
+  ) => Promise<{ id: string } | void>;
 }
 
-type State = 'closed' | 'open' | 'loading' | 'preview' | 'installing';
+type State = 'closed' | 'open' | 'loading' | 'preview' | 'installing' | 'refine';
 
 interface EditingContext {
   feature: Feature;
@@ -37,7 +42,12 @@ interface OverlayInstance {
   promptView: HTMLDivElement;
   banner: HTMLDivElement;
   bannerText: HTMLSpanElement;
-  input: HTMLInputElement;
+  input: HTMLTextAreaElement;
+  chipsContainer: HTMLDivElement;
+  micBtn: HTMLButtonElement;
+  effortCheckbox: HTMLInputElement;
+  refineBanner: HTMLDivElement;
+  refineBannerName: HTMLSpanElement;
   promptAction: HTMLButtonElement;
   promptActionLabel: HTMLSpanElement;
   status: HTMLDivElement;
@@ -48,14 +58,116 @@ interface OverlayInstance {
   currentResponse: GenerateResponse | null;
   editing: EditingContext | null;
   installedTimer: ReturnType<typeof setTimeout> | null;
+  // Refinement state
+  refinementCount: number;
+  refinementHistory: Array<{ role: 'user' | 'assistant'; content: string }>;
+  installedFeatureId: string | null;
+  installedFeatureName: string;
+  installedCode: string;
+  // Voice
+  stopVoice: (() => void) | null;
 }
+
+// ---- Constants ----
 
 const HOST_TAG = 'bob-overlay-host';
 const INSTALLED_DELAY_MS = 800;
 
+const INITIAL_CHIPS = [
+  'Hide distracting elements',
+  'Add a useful button',
+  'Make text bigger',
+  'Reformat the page',
+];
+
+const REFINE_CHIPS = [
+  'Make it smaller',
+  'Apply more broadly',
+  'Add a tooltip',
+  'Undo this',
+];
+
+// ---- Module state ----
+
 let instance: OverlayInstance | null = null;
 let callbacks: OverlayCallbacks | null = null;
 let keydownAttached = false;
+
+// ---- Effort mode ----
+
+function getEffortMode(): 'standard' | 'high' {
+  try {
+    return sessionStorage.getItem('bob-effort-mode') === 'high' ? 'high' : 'standard';
+  } catch {
+    return 'standard';
+  }
+}
+
+function setEffortMode(mode: 'standard' | 'high'): void {
+  try {
+    sessionStorage.setItem('bob-effort-mode', mode);
+  } catch {
+    // storage unavailable
+  }
+}
+
+// ---- Textarea auto-grow ----
+
+function autoGrow(): void {
+  if (!instance) return;
+  const ta = instance.input;
+  ta.style.height = 'auto';
+  ta.style.height = Math.min(ta.scrollHeight, 140) + 'px';
+}
+
+// ---- Chip management ----
+
+function updateChips(): void {
+  if (!instance) return;
+  const container = instance.chipsContainer;
+  container.replaceChildren();
+
+  let chipList: string[] | null = null;
+
+  if (instance.state === 'refine') {
+    chipList = instance.refinementCount >= 3
+      ? [...REFINE_CHIPS, 'Done']
+      : REFINE_CHIPS;
+  } else if (
+    (instance.state === 'open') &&
+    instance.input.value.length === 0
+  ) {
+    chipList = INITIAL_CHIPS;
+  }
+
+  if (!chipList) {
+    container.setAttribute('hidden', '');
+    return;
+  }
+
+  for (const text of chipList) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'chip';
+    if (text === 'Done') chip.classList.add('chip-done');
+    chip.textContent = text;
+    chip.addEventListener('click', () => {
+      if (!instance) return;
+      if (text === 'Done') {
+        closeOverlay();
+        return;
+      }
+      instance.input.value = text;
+      instance.input.focus();
+      autoGrow();
+      updateChips();
+    });
+    container.appendChild(chip);
+  }
+  container.removeAttribute('hidden');
+}
+
+// ---- State management ----
 
 function setState(next: State): void {
   if (!instance) return;
@@ -65,7 +177,6 @@ function setState(next: State): void {
   instance.preview.installBtn.disabled = next === 'installing';
   instance.preview.cancelBtn.disabled = next === 'installing';
 
-  // Prompt action button label switches between Generate and Stop.
   if (next === 'loading') {
     instance.promptAction.classList.add('stop');
     instance.promptActionLabel.textContent = 'Stop';
@@ -75,6 +186,8 @@ function setState(next: State): void {
     instance.promptActionLabel.textContent = 'Generate';
     instance.promptAction.setAttribute('aria-label', 'Generate');
   }
+
+  updateChips();
 }
 
 function setEditing(ctx: EditingContext | null): void {
@@ -92,6 +205,30 @@ function setEditing(ctx: EditingContext | null): void {
     instance.preview.installLabel.textContent = 'Install';
   }
 }
+
+function setRefineMode(id: string, name: string, code: string): void {
+  if (!instance) return;
+  instance.installedFeatureId = id;
+  instance.installedFeatureName = name;
+  instance.installedCode = code;
+  instance.refineBanner.removeAttribute('hidden');
+  instance.refineBannerName.textContent = name;
+  // Clear editing context — refine is separate
+  setEditing(null);
+}
+
+function clearRefineMode(): void {
+  if (!instance) return;
+  instance.installedFeatureId = null;
+  instance.installedFeatureName = '';
+  instance.installedCode = '';
+  instance.refinementCount = 0;
+  instance.refinementHistory = [];
+  instance.refineBanner.setAttribute('hidden', '');
+  instance.refineBannerName.textContent = '';
+}
+
+// ---- Error display ----
 
 function showPromptError(message: string): void {
   if (!instance) return;
@@ -120,39 +257,58 @@ function clearPreviewError(): void {
   instance.preview.status.classList.remove('visible');
 }
 
+// ---- Actions ----
+
 async function submitPrompt(): Promise<void> {
   if (!instance || !callbacks) return;
-  if (instance.state !== 'open') return;
+  if (instance.state !== 'open' && instance.state !== 'refine') return;
   const value = instance.input.value.trim();
   if (value.length === 0) return;
 
+  const wasRefining = instance.state === 'refine';
   instance.originalPrompt = value;
   clearPromptError();
   setState('loading');
   const token = ++instance.requestToken;
 
-  const editing = instance.editing;
-  const options: OnGenerateOptions | undefined = editing
-    ? {
-        existingCode: editing.feature.code,
-        existingFeatureName: editing.feature.name,
-        parentFeatureId: editing.feature.id,
-      }
-    : undefined;
+  const effortMode = getEffortMode();
+  let options: OnGenerateOptions | undefined;
+
+  if (wasRefining && instance.installedFeatureId) {
+    // Refinement: pass existing code and history
+    instance.refinementHistory.push({ role: 'user', content: value });
+    options = {
+      existingCode: instance.installedCode,
+      existingFeatureName: instance.installedFeatureName,
+      parentFeatureId: instance.installedFeatureId,
+      refinementHistory: [...instance.refinementHistory],
+      effortMode: effortMode !== 'standard' ? effortMode : undefined,
+    };
+  } else if (instance.editing) {
+    // Editing an existing feature
+    options = {
+      existingCode: instance.editing.feature.code,
+      existingFeatureName: instance.editing.feature.name,
+      parentFeatureId: instance.editing.feature.id,
+      effortMode: effortMode !== 'standard' ? effortMode : undefined,
+    };
+  } else if (effortMode !== 'standard') {
+    options = { effortMode };
+  }
 
   try {
     const response = await callbacks.onGenerate(value, options);
     if (!instance || instance.requestToken !== token) return;
     instance.currentResponse = response;
     populatePreview(instance.preview, response);
-    // Re-apply Update/Install label since populatePreview doesn't know.
-    instance.preview.installLabel.textContent = editing ? 'Update' : 'Install';
+    instance.preview.installLabel.textContent =
+      (wasRefining || instance.editing) ? 'Update' : 'Install';
     setState('preview');
     requestAnimationFrame(() => instance?.preview.nameInput.focus());
   } catch (err) {
     if (!instance || instance.requestToken !== token) return;
     const message = err instanceof Error ? err.message : String(err);
-    setState('open');
+    setState(wasRefining ? 'refine' : 'open');
     showPromptError(message || 'Something went wrong.');
   }
 }
@@ -160,19 +316,22 @@ async function submitPrompt(): Promise<void> {
 function stopGeneration(): void {
   if (!instance) return;
   if (instance.state !== 'loading') return;
-  // Per spec's hackathon-mode "fake cancel": bump the token so the
-  // in-flight onGenerate result is ignored when it eventually resolves,
-  // then close the overlay. The integration side can later wire a real
-  // AbortSignal through OnGenerateOptions.signal.
   instance.requestToken++;
-  closeOverlay();
+  if (instance.installedFeatureId) {
+    // Return to refine state if we were refining
+    setState('refine');
+    instance.input.value = '';
+    autoGrow();
+  } else {
+    closeOverlay();
+  }
 }
 
 function markInstalledTransient(): void {
   if (!instance) return;
   const btn = instance.preview.installBtn;
   btn.classList.add('installed');
-  instance.preview.installLabel.textContent = 'Installed ✓';
+  instance.preview.installLabel.textContent = 'Installed \u2713';
 }
 
 async function install(): Promise<void> {
@@ -192,19 +351,26 @@ async function install(): Promise<void> {
     return;
   }
 
+  const isRefinement = !!instance.installedFeatureId;
   const editing = instance.editing;
+
   const feature = {
     code: instance.currentResponse.code,
     name: editedName,
     description: instance.currentResponse.description,
     urlPattern: editedUrl,
     userPrompt: instance.originalPrompt,
-    ...(editing
+    ...(isRefinement
       ? {
-          parentFeatureId: editing.feature.id,
-          iterationNumber: (editing.feature.iterationNumber ?? 0) + 1,
+          parentFeatureId: instance.installedFeatureId!,
+          iterationNumber: instance.refinementCount + 1,
         }
-      : {}),
+      : editing
+        ? {
+            parentFeatureId: editing.feature.id,
+            iterationNumber: (editing.feature.iterationNumber ?? 0) + 1,
+          }
+        : {}),
   };
 
   clearPreviewError();
@@ -212,15 +378,39 @@ async function install(): Promise<void> {
   const token = ++instance.requestToken;
 
   try {
-    await callbacks.onInstall(feature);
+    const result = await callbacks.onInstall(feature);
     if (!instance || instance.requestToken !== token) return;
     markInstalledTransient();
+
+    const installedId = result && 'id' in result ? result.id : null;
+    const installedCode = instance.currentResponse!.code;
+
+    // Add assistant turn to refinement history
+    instance.refinementHistory.push({
+      role: 'assistant',
+      content: instance.currentResponse!.description,
+    });
+    instance.refinementCount++;
+
     if (instance.installedTimer) clearTimeout(instance.installedTimer);
     instance.installedTimer = setTimeout(() => {
       if (!instance || instance.requestToken !== token) return;
-      const verb = editing ? 'Updated' : 'Installed';
-      closeOverlay();
-      showToast(`${verb}: ${editedName}`);
+      instance.preview.installBtn.classList.remove('installed');
+
+      if (installedId) {
+        // Transition to refine state
+        setRefineMode(installedId, editedName, installedCode);
+        instance.input.value = '';
+        autoGrow();
+        instance.input.placeholder = 'Refine this feature\u2026 (Cmd+Enter to submit)';
+        setState('refine');
+        requestAnimationFrame(() => instance?.input.focus());
+      } else {
+        // No id returned — close with toast (legacy behavior)
+        const verb = editing ? 'Updated' : 'Installed';
+        closeOverlay();
+        showToast(`${verb}: ${editedName}`);
+      }
     }, INSTALLED_DELAY_MS);
   } catch (err) {
     if (!instance || instance.requestToken !== token) return;
@@ -235,13 +425,64 @@ function cancelPreview(): void {
   if (instance.state !== 'preview') return;
   clearPreviewError();
   instance.requestToken++;
-  setState('open');
-  instance.input.value = instance.originalPrompt;
+
+  if (instance.installedFeatureId) {
+    // Go back to refine state
+    setState('refine');
+    instance.input.value = '';
+    autoGrow();
+  } else {
+    setState('open');
+    instance.input.value = instance.originalPrompt;
+    autoGrow();
+  }
+
   requestAnimationFrame(() => {
     instance?.input.focus();
-    instance?.input.select();
   });
 }
+
+// ---- Voice input ----
+
+function toggleVoice(): void {
+  if (!instance) return;
+
+  if (instance.stopVoice) {
+    instance.stopVoice();
+    instance.stopVoice = null;
+    instance.micBtn.classList.remove('recording');
+    return;
+  }
+
+  instance.stopVoice = startVoiceInput({
+    onResult: (text) => {
+      if (!instance) return;
+      const current = instance.input.value;
+      instance.input.value = current
+        ? current + ' ' + text
+        : text;
+      autoGrow();
+      updateChips();
+    },
+    onError: (err) => {
+      if (err === 'not-allowed') {
+        showToast('Microphone permission denied');
+      } else if (err !== 'aborted' && err !== 'no-speech') {
+        showToast('Voice input failed: ' + err);
+      }
+    },
+    onStart: () => {
+      instance?.micBtn.classList.add('recording');
+    },
+    onEnd: () => {
+      if (!instance) return;
+      instance.micBtn.classList.remove('recording');
+      instance.stopVoice = null;
+    },
+  });
+}
+
+// ---- Build DOM ----
 
 function buildOverlay(): OverlayInstance {
   const host = document.createElement(HOST_TAG);
@@ -278,26 +519,86 @@ function buildOverlay(): OverlayInstance {
   bannerClose.type = 'button';
   bannerClose.className = 'edit-banner-close';
   bannerClose.setAttribute('aria-label', 'Cancel edit');
-  bannerClose.textContent = '×';
+  bannerClose.textContent = '\u00d7';
   bannerClose.addEventListener('click', () => closeOverlay());
   banner.appendChild(bannerLabel);
   banner.appendChild(bannerText);
   banner.appendChild(bannerClose);
 
+  // Refine-mode banner
+  const refineBanner = document.createElement('div');
+  refineBanner.className = 'refine-banner';
+  refineBanner.setAttribute('hidden', '');
+  const refineBannerLabel = document.createElement('span');
+  refineBannerLabel.className = 'refine-banner-label';
+  refineBannerLabel.textContent = 'Installed \u2713';
+  const refineBannerName = document.createElement('span');
+  refineBannerName.className = 'refine-banner-name';
+  const refineBannerClose = document.createElement('button');
+  refineBannerClose.type = 'button';
+  refineBannerClose.className = 'refine-banner-close';
+  refineBannerClose.setAttribute('aria-label', 'Close');
+  refineBannerClose.textContent = '\u00d7';
+  refineBannerClose.addEventListener('click', () => closeOverlay());
+  refineBanner.appendChild(refineBannerLabel);
+  refineBanner.appendChild(refineBannerName);
+  refineBanner.appendChild(refineBannerClose);
+
+  // Effort toggle header
+  const promptHeader = document.createElement('div');
+  promptHeader.className = 'prompt-header';
+
+  const effortLabel = document.createElement('label');
+  effortLabel.className = 'effort-toggle';
+  effortLabel.title = 'Slower, more thorough \u2014 uses extended reasoning. Good for complex tasks.';
+
+  const effortCheckbox = document.createElement('input');
+  effortCheckbox.type = 'checkbox';
+  effortCheckbox.className = 'effort-checkbox';
+  effortCheckbox.checked = getEffortMode() === 'high';
+  effortCheckbox.addEventListener('change', () => {
+    setEffortMode(effortCheckbox.checked ? 'high' : 'standard');
+  });
+
+  const effortSlider = document.createElement('span');
+  effortSlider.className = 'effort-slider';
+
+  const effortLabelText = document.createElement('span');
+  effortLabelText.className = 'effort-label';
+  effortLabelText.textContent = 'High effort \u26a1';
+
+  effortLabel.appendChild(effortCheckbox);
+  effortLabel.appendChild(effortSlider);
+  effortLabel.appendChild(effortLabelText);
+  promptHeader.appendChild(effortLabel);
+
+  // Input row
   const row = document.createElement('div');
   row.className = 'row';
 
-  const input = document.createElement('input');
+  const input = document.createElement('textarea');
   input.className = 'prompt';
-  input.type = 'text';
   input.autocomplete = 'off';
   input.spellcheck = false;
-  input.placeholder = 'What do you want to change about this page?';
+  input.rows = 1;
+  input.placeholder = 'Describe what you want\u2026 (Cmd+Enter to submit)';
   input.setAttribute('aria-label', 'Prompt');
 
   const spinner = document.createElement('div');
   spinner.className = 'spinner';
   spinner.setAttribute('aria-hidden', 'true');
+
+  // Mic button (hidden if not supported)
+  const micBtn = document.createElement('button');
+  micBtn.type = 'button';
+  micBtn.className = 'mic-btn';
+  micBtn.setAttribute('aria-label', 'Voice input');
+  micBtn.title = 'Voice input';
+  micBtn.textContent = '\ud83c\udfa4';
+  if (!isVoiceSupported()) {
+    micBtn.style.display = 'none';
+  }
+  micBtn.addEventListener('click', toggleVoice);
 
   const promptAction = document.createElement('button');
   promptAction.type = 'button';
@@ -309,12 +610,18 @@ function buildOverlay(): OverlayInstance {
   promptAction.addEventListener('click', () => {
     if (!instance) return;
     if (instance.state === 'loading') stopGeneration();
-    else if (instance.state === 'open') void submitPrompt();
+    else if (instance.state === 'open' || instance.state === 'refine') void submitPrompt();
   });
 
   row.appendChild(input);
   row.appendChild(spinner);
+  row.appendChild(micBtn);
   row.appendChild(promptAction);
+
+  // Suggestion chips
+  const chipsContainer = document.createElement('div');
+  chipsContainer.className = 'chips';
+  chipsContainer.setAttribute('hidden', '');
 
   const status = document.createElement('div');
   status.className = 'status';
@@ -326,19 +633,22 @@ function buildOverlay(): OverlayInstance {
   const left = document.createElement('span');
   left.textContent = 'BOB';
   const right = document.createElement('span');
-  const enterKbd = document.createElement('kbd');
-  enterKbd.textContent = 'Enter';
+  const cmdKbd = document.createElement('kbd');
+  cmdKbd.textContent = '\u2318Enter';
   const escKbd = document.createElement('kbd');
   escKbd.textContent = 'Esc';
-  right.appendChild(enterKbd);
-  right.appendChild(document.createTextNode(' to submit · '));
+  right.appendChild(cmdKbd);
+  right.appendChild(document.createTextNode(' to submit \u00b7 '));
   right.appendChild(escKbd);
   right.appendChild(document.createTextNode(' to close'));
   hint.appendChild(left);
   hint.appendChild(right);
 
   promptView.appendChild(banner);
+  promptView.appendChild(refineBanner);
+  promptView.appendChild(promptHeader);
   promptView.appendChild(row);
+  promptView.appendChild(chipsContainer);
   promptView.appendChild(status);
   promptView.appendChild(hint);
 
@@ -350,13 +660,13 @@ function buildOverlay(): OverlayInstance {
   backdrop.appendChild(modal);
   root.appendChild(backdrop);
 
-  // Backdrop click closes (only when click lands on backdrop, not modal contents)
+  // Backdrop click closes
   backdrop.addEventListener('mousedown', (e) => {
     if (e.target !== backdrop) return;
     closeOverlay();
   });
 
-  // Capture-phase keydown — handle our shortcuts before they reach inputs
+  // Capture-phase keydown
   backdrop.addEventListener(
     'keydown',
     (e) => {
@@ -368,26 +678,21 @@ function buildOverlay(): OverlayInstance {
         return;
       }
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        e.stopPropagation();
         if (instance.state === 'preview') {
-          e.preventDefault();
-          e.stopPropagation();
           void install();
-        }
-        return;
-      }
-      if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
-        if (instance.state === 'open' && e.target === input) {
-          e.preventDefault();
-          e.stopPropagation();
+        } else if (instance.state === 'open' || instance.state === 'refine') {
           void submitPrompt();
         }
         return;
       }
+      // Plain Enter in textarea — let it insert newline (don't prevent)
     },
     true,
   );
 
-  // Bubble-phase swallow — keep host page shortcuts inert while overlay is open
+  // Bubble-phase swallow
   const swallow = (e: Event): void => {
     e.stopPropagation();
   };
@@ -395,12 +700,14 @@ function buildOverlay(): OverlayInstance {
   backdrop.addEventListener('keyup', swallow);
   backdrop.addEventListener('keypress', swallow);
 
-  // Clear error visuals when the user starts typing again
+  // Input events
   input.addEventListener('input', () => {
     if (!instance) return;
-    if (instance.state === 'open' || instance.state === 'loading') {
+    autoGrow();
+    if (instance.state === 'open' || instance.state === 'refine' || instance.state === 'loading') {
       clearPromptError();
     }
+    updateChips();
   });
   preview.nameInput.addEventListener('input', clearPreviewError);
   preview.urlInput.addEventListener('input', clearPreviewError);
@@ -418,6 +725,11 @@ function buildOverlay(): OverlayInstance {
     banner,
     bannerText,
     input,
+    chipsContainer,
+    micBtn,
+    effortCheckbox,
+    refineBanner,
+    refineBannerName,
     promptAction,
     promptActionLabel,
     status,
@@ -428,14 +740,20 @@ function buildOverlay(): OverlayInstance {
     currentResponse: null,
     editing: null,
     installedTimer: null,
+    refinementCount: 0,
+    refinementHistory: [],
+    installedFeatureId: null,
+    installedFeatureName: '',
+    installedCode: '',
+    stopVoice: null,
   };
 }
+
+// ---- Keydown listener ----
 
 function ensureKeydownListener(): void {
   if (keydownAttached) return;
   keydownAttached = true;
-  // Capture phase so we beat the host page's own Cmd+K handlers
-  // (GitHub, Slack, Twitter all bind it).
   window.addEventListener(
     'keydown',
     (e) => {
@@ -445,12 +763,13 @@ function ensureKeydownListener(): void {
       e.preventDefault();
       e.stopPropagation();
       if (instance.state === 'closed') openOverlay();
-      else if (instance.state === 'open') closeOverlay();
-      // ignored in loading / preview / installing — Esc is the universal close
+      else if (instance.state === 'open' || instance.state === 'refine') closeOverlay();
     },
     true,
   );
 }
+
+// ---- Public API ----
 
 export function initOverlay(cb: OverlayCallbacks): void {
   callbacks = cb;
@@ -464,16 +783,15 @@ export function initOverlay(cb: OverlayCallbacks): void {
 export function openOverlay(): void {
   if (!instance) return;
   if (instance.state !== 'closed') return;
+  instance.input.placeholder = 'Describe what you want\u2026 (Cmd+Enter to submit)';
   setState('open');
   requestAnimationFrame(() => {
     instance?.input.focus();
-    instance?.input.select();
   });
 }
 
 export function openOverlayWithPrompt(prompt: string): void {
   if (!instance) return;
-  // Discard any in-flight work.
   instance.requestToken++;
   if (instance.installedTimer) {
     clearTimeout(instance.installedTimer);
@@ -482,53 +800,61 @@ export function openOverlayWithPrompt(prompt: string): void {
   instance.currentResponse = null;
   clearPromptError();
   clearPreviewError();
+  clearRefineMode();
   instance.preview.installBtn.classList.remove('installed');
   setEditing(null);
   instance.input.value = prompt ?? '';
+  instance.input.placeholder = 'Describe what you want\u2026 (Cmd+Enter to submit)';
   instance.originalPrompt = instance.input.value;
   setState('open');
+  autoGrow();
   requestAnimationFrame(() => {
     instance?.input.focus();
-    instance?.input.select();
   });
 }
 
 export function openOverlayForEdit(feature: Feature): void {
   if (!instance) return;
-  // If we're mid-flight on something else, bump the token so it's discarded.
   instance.requestToken++;
   if (instance.installedTimer) {
     clearTimeout(instance.installedTimer);
     instance.installedTimer = null;
   }
-  // Reset any stale state, then enter edit mode.
   instance.currentResponse = null;
   clearPromptError();
   clearPreviewError();
+  clearRefineMode();
   instance.preview.installBtn.classList.remove('installed');
   setEditing({ feature });
   instance.input.value = feature.userPrompt ?? '';
+  instance.input.placeholder = 'Describe what you want\u2026 (Cmd+Enter to submit)';
   instance.originalPrompt = instance.input.value;
   setState('open');
+  autoGrow();
   requestAnimationFrame(() => {
     instance?.input.focus();
-    instance?.input.select();
   });
 }
 
 export function closeOverlay(): void {
   if (!instance) return;
-  // Bump the token so any in-flight onGenerate / onInstall result is discarded
   instance.requestToken++;
   if (instance.installedTimer) {
     clearTimeout(instance.installedTimer);
     instance.installedTimer = null;
   }
+  if (instance.stopVoice) {
+    instance.stopVoice();
+    instance.stopVoice = null;
+    instance.micBtn.classList.remove('recording');
+  }
   clearPromptError();
   clearPreviewError();
+  clearRefineMode();
   setState('closed');
   setEditing(null);
   instance.input.value = '';
+  instance.input.style.height = '';
   instance.originalPrompt = '';
   instance.currentResponse = null;
   instance.preview.installBtn.classList.remove('installed');
