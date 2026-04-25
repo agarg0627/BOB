@@ -1,9 +1,20 @@
-// Owned by Person A. Stub — implement in Phase 1.
-console.log('[bob] background started');
-
-chrome.runtime.onMessage.addListener((msg, _sender, _sendResponse) => {
-  console.log('[bob] background received message', msg);
-  return false;
+// Owned by Person A.
+chrome.runtime.onInstalled.addListener(() => {
+  console.log('[ext] background started');
 });
+
+chrome.runtime.onStartup.addListener(() => {
+  console.log('[ext] background started');
+});
+
+chrome.runtime.onMessage.addListener(
+  (msg: { type: string }, _sender, _sendResponse) => {
+    switch (msg.type) {
+      default:
+        break;
+    }
+    return false;
+  }
+);
 
 export {};
