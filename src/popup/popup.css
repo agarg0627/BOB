@@ -114,6 +114,47 @@ button {
   padding: 8px 0 12px;
 }
 
+/* ---- Bulk actions ---- */
+.bulk-actions {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+
+.bulk-btn {
+  flex: 1;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.bulk-btn:not(:disabled):hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+  color: var(--fg);
+}
+
+.bulk-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.bulk-btn-danger {
+  color: var(--red);
+}
+
+.bulk-btn-danger:not(:disabled):hover {
+  background: var(--error-bg);
+  border-color: var(--red);
+}
+
 .features-section {
   padding: 8px 0 0;
 }
@@ -197,6 +238,15 @@ button {
 .feature-desc {
   font-size: 12px;
   color: var(--fg-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.parent-line {
+  font-size: 10.5px;
+  font-style: italic;
+  color: var(--fg-faint);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -299,6 +349,40 @@ button {
   transform: translateX(16px);
 }
 
+/* Icon buttons (Edit, …) */
+.icon-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--fg-faint);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s, color 0.12s;
+}
+
+.icon-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.icon-btn:hover {
+  background: var(--bg-elev);
+  color: var(--fg);
+}
+
+.edit-btn-disabled {
+  opacity: 0.4;
+}
+
+.edit-btn-disabled:hover {
+  background: transparent;
+  color: var(--fg-faint);
+}
+
 /* Delete button */
 .delete {
   width: 24px;
@@ -388,6 +472,93 @@ button {
 
 .copy-btn:hover {
   background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+
+/* ---- Suggestions ---- */
+.suggestions-section {
+  padding: 8px 0 0;
+}
+
+.suggestion-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 12px;
+}
+
+.suggestion-card {
+  background: var(--bg-card);
+  border: 1px solid var(--accent);
+  border-left-width: 3px;
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.suggestion-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.suggestion-prompt {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--fg);
+  line-height: 1.4;
+}
+
+.suggestion-rationale {
+  font-size: 11px;
+  color: var(--fg-muted);
+  line-height: 1.4;
+}
+
+.suggestion-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.btn-mini {
+  font: inherit;
+  font-size: 11px;
+  padding: 4px 9px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.btn-mini-primary {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.btn-mini-primary:hover {
+  filter: brightness(1.05);
+}
+
+.btn-mini-ghost {
+  background: transparent;
+  color: var(--fg-faint);
+  border-color: var(--border);
+  width: 22px;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.btn-mini-ghost:hover {
+  background: var(--bg-hover);
+  color: var(--fg);
   border-color: var(--border-strong);
 }
 
