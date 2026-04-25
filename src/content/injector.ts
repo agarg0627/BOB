@@ -1,31 +1,34 @@
-// Owned by Person C.
 import type { Feature } from '../shared/types';
-import { Storage } from '../shared/storage';
+import { send } from '../shared/messages';
 
-export function runFeature(feature: Feature): { ok: boolean; error?: string } {
-  const wrappedCode = `(function(){ try { ${feature.code} } catch(e){ throw e; } })()`;
+export async function runFeature(
+  feature: Feature
+): Promise<{ ok: boolean; error?: string }> {
   try {
-    new Function(wrappedCode)();
-    return { ok: true };
+    const res = await send<{ ok: boolean; error?: string }>({
+      type: 'RUN_FEATURE',
+      featureId: feature.id,
+      code: feature.code,
+    });
+    return res;
   } catch (e) {
-    const error = e instanceof Error ? e.message : String(e);
-    return { ok: false, error };
+    return { ok: false, error: String(e) };
   }
 }
 
 export async function runAllForUrl(
-  url: string,
+  url: string
 ): Promise<{ ran: number; errors: string[] }> {
-  const features = await Storage.matching(url);
-  let ran = 0;
+  const features = await send<Feature[]>({
+    type: 'GET_FEATURES_FOR_URL',
+    url,
+  });
   const errors: string[] = [];
+  let ran = 0;
   for (const f of features) {
-    const result = runFeature(f);
-    if (result.ok) {
-      ran++;
-    } else {
-      errors.push(`${f.name}: ${result.error ?? 'unknown error'}`);
-    }
+    const r = await runFeature(f);
+    if (r.ok) ran++;
+    else errors.push(`${f.name}: ${r.error}`);
   }
   return { ran, errors };
 }

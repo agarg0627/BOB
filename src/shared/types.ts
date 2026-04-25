@@ -28,6 +28,7 @@ export interface GenerateResponse {
 export type Message =
   | { type: 'GENERATE_FEATURE'; req: GenerateRequest }
   | { type: 'INSTALL_FEATURE'; feature: Omit<Feature, 'id' | 'createdAt'> }
+  | { type: 'RUN_FEATURE'; featureId: string; code: string }
   | { type: 'GET_FEATURES_FOR_URL'; url: string }
   | { type: 'LIST_FEATURES' }
   | { type: 'DELETE_FEATURE'; id: string }
