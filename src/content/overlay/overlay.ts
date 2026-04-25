@@ -471,6 +471,28 @@ export function openOverlay(): void {
   });
 }
 
+export function openOverlayWithPrompt(prompt: string): void {
+  if (!instance) return;
+  // Discard any in-flight work.
+  instance.requestToken++;
+  if (instance.installedTimer) {
+    clearTimeout(instance.installedTimer);
+    instance.installedTimer = null;
+  }
+  instance.currentResponse = null;
+  clearPromptError();
+  clearPreviewError();
+  instance.preview.installBtn.classList.remove('installed');
+  setEditing(null);
+  instance.input.value = prompt ?? '';
+  instance.originalPrompt = instance.input.value;
+  setState('open');
+  requestAnimationFrame(() => {
+    instance?.input.focus();
+    instance?.input.select();
+  });
+}
+
 export function openOverlayForEdit(feature: Feature): void {
   if (!instance) return;
   // If we're mid-flight on something else, bump the token so it's discarded.

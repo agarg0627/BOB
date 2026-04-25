@@ -14,6 +14,7 @@
 // time_on_site events so a future heuristic can pick them up without
 // changing the data plane.
 import type { Suggestion, UserBehaviorEvent } from '../shared/types';
+import { withStorageLock } from '../shared/storage';
 
 const MAX_BEHAVIOR_EVENTS = 500;
 const ANALYZE_THROTTLE_MS = 60_000;
@@ -91,29 +92,40 @@ export async function recordEvent(event: UserBehaviorEvent): Promise<void> {
   if (!event || typeof event !== 'object') return;
 
   // Append + trim to MAX_BEHAVIOR_EVENTS, oldest dropped first.
-  const list = await readBehavior();
-  list.push(event);
-  if (list.length > MAX_BEHAVIOR_EVENTS) {
-    list.splice(0, list.length - MAX_BEHAVIOR_EVENTS);
-  }
-  await writeBehavior(list);
+  await withStorageLock(KEY_BEHAVIOR, async () => {
+    const list = await readBehavior();
+    list.push(event);
+    if (list.length > MAX_BEHAVIOR_EVENTS) {
+      list.splice(0, list.length - MAX_BEHAVIOR_EVENTS);
+    }
+    await writeBehavior(list);
+  });
 
   const host = event.hostname;
   if (!host) return;
 
   // Throttle analysis: at most one analyzeAndUpsert call per minute per
-  // hostname.
-  const meta = await readMeta();
-  const last = meta.lastAnalyzedAt[host] ?? 0;
-  const now = Date.now();
-  if (now - last < ANALYZE_THROTTLE_MS) return;
-  meta.lastAnalyzedAt[host] = now;
-  await writeMeta(meta);
+  // hostname. Wrap the read-check-write under the meta lock so two
+  // concurrent recordEvent calls for the same host don't both pass.
+  const shouldAnalyze = await withStorageLock(KEY_META, async () => {
+    const meta = await readMeta();
+    const last = meta.lastAnalyzedAt[host] ?? 0;
+    const now = Date.now();
+    if (now - last < ANALYZE_THROTTLE_MS) return false;
+    meta.lastAnalyzedAt[host] = now;
+    await writeMeta(meta);
+    return true;
+  });
+  if (!shouldAnalyze) return;
 
   await analyzeAndUpsert(host);
 }
 
 export async function analyzeAndUpsert(hostname: string): Promise<void> {
+  return withStorageLock(KEY_SUGGESTIONS, () => analyzeAndUpsertLocked(hostname));
+}
+
+async function analyzeAndUpsertLocked(hostname: string): Promise<void> {
   const events = await readBehavior();
   const closeEvents = events.filter(
     (e) =>
@@ -207,23 +219,27 @@ export async function getSuggestions(hostname?: string): Promise<Suggestion[]> {
 }
 
 export async function dismissSuggestion(id: string): Promise<void> {
-  const list = await readSuggestions();
-  const idx = list.findIndex((s) => s.id === id);
-  if (idx < 0) return;
-  list[idx] = { ...list[idx], dismissed: true };
-  await writeSuggestions(list);
+  return withStorageLock(KEY_SUGGESTIONS, async () => {
+    const list = await readSuggestions();
+    const idx = list.findIndex((s) => s.id === id);
+    if (idx < 0) return;
+    list[idx] = { ...list[idx], dismissed: true };
+    await writeSuggestions(list);
+  });
 }
 
 export async function acceptSuggestion(
   id: string,
 ): Promise<{ proposedPrompt: string; hostname: string }> {
-  const list = await readSuggestions();
-  const idx = list.findIndex((s) => s.id === id);
-  if (idx < 0) {
-    throw new Error('suggestion not found: ' + id);
-  }
-  const s = list[idx];
-  list[idx] = { ...s, dismissed: true };
-  await writeSuggestions(list);
-  return { proposedPrompt: s.proposedPrompt, hostname: s.hostname };
+  return withStorageLock(KEY_SUGGESTIONS, async () => {
+    const list = await readSuggestions();
+    const idx = list.findIndex((s) => s.id === id);
+    if (idx < 0) {
+      throw new Error('suggestion not found: ' + id);
+    }
+    const s = list[idx];
+    list[idx] = { ...s, dismissed: true };
+    await writeSuggestions(list);
+    return { proposedPrompt: s.proposedPrompt, hostname: s.hostname };
+  });
 }

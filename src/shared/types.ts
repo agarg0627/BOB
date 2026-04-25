@@ -92,6 +92,7 @@ export type Message =
   | { type: 'BULK_TOGGLE'; enabled: boolean }
   | { type: 'BULK_DELETE' }
   | { type: 'OPEN_OVERLAY_FOR_EDIT'; featureId: string }
+  | { type: 'OPEN_OVERLAY_WITH_PROMPT'; prompt: string }
   | { type: 'INSTALL_FEATURE'; feature: Omit<Feature, 'id' | 'createdAt'> }
   | { type: 'GET_FEATURES_FOR_URL'; url: string }
   | { type: 'LIST_FEATURES' }

@@ -63,6 +63,7 @@ export async function runAgent(
           role: 'tool',
           content: result.result,
           toolCallId: result.toolCallId,
+          toolName: call.name,
         });
       }
       continue;
@@ -121,15 +122,21 @@ function parseFeatureJSON(text: string, url: string): GenerateResponse {
       `Agent returned non-JSON final response: ${trimmed.slice(0, 300)}`,
     );
   }
-  if (!obj.code) {
-    throw new Error('Agent response missing required field "code"');
+  if (typeof obj.code !== 'string' || !obj.code.trim()) {
+    throw new Error('Agent response missing or invalid required field "code"');
   }
 
-  const hostname = (() => {
+  const fallbackPattern = (() => {
     try {
-      return new URL(url).hostname;
+      const u = new URL(url);
+      const host = u.hostname;
+      // Refuse to default to a global match when hostname extraction fails
+      // or the URL has no hostname (e.g. about:blank, chrome://). Pin the
+      // pattern to the exact URL so a single feature can't run everywhere.
+      if (!host) return url;
+      return `*://${host}/*`;
     } catch {
-      return '*';
+      return url;
     }
   })();
 
@@ -137,6 +144,8 @@ function parseFeatureJSON(text: string, url: string): GenerateResponse {
     code: obj.code,
     name: obj.name || 'Untitled feature',
     description: obj.description || 'Custom customization',
-    urlPattern: obj.urlPattern || `*://${hostname}/*`,
+    urlPattern: typeof obj.urlPattern === 'string' && obj.urlPattern
+      ? obj.urlPattern
+      : fallbackPattern,
   };
 }

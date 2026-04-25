@@ -65,15 +65,20 @@ chrome.runtime.onMessage.addListener(
               const results = await chrome.scripting.executeScript({
                 target: { tabId },
                 world: 'MAIN',
+                // NOTE: this is intentionally synchronous. Async errors (from
+                // setTimeout, MutationObserver callbacks, async/await in the
+                // injected code) will not be captured in __bobLastError. The
+                // IIFE wrapper's try/catch handles synchronous errors, which
+                // is the common case. We previously tried a 250ms wait here
+                // but reverted because the latency cost wasn't justified by
+                // the small slice of async errors it caught.
                 func: (code: string) => {
                   try {
-                    // Clear any previous run's error
                     (window as any).__bobLastError = undefined;
                     // @ts-ignore — trustedTypes isn't in default lib types
                     const tt = (window as any).trustedTypes;
                     let scriptValue: any = code;
                     if (tt && tt.createPolicy) {
-                      // Policy names must be unique per page; reuse if it exists
                       const policy =
                         tt.defaultPolicy ??
                         tt.createPolicy('bob-injector-' + Math.random().toString(36).slice(2), {
@@ -87,11 +92,10 @@ chrome.runtime.onMessage.addListener(
                     script.textContent = scriptValue;
                     (document.head || document.documentElement).appendChild(script);
                     script.remove();
-                    // Check if the injected IIFE caught an error
-                    const lastError = (window as any).__bobLastError;
-                    if (lastError) {
+                    const err = (window as any).__bobLastError;
+                    if (err) {
                       (window as any).__bobLastError = undefined;
-                      return { ok: false, error: lastError };
+                      return { ok: false, error: err };
                     }
                     return { ok: true };
                   } catch (e) {
@@ -142,9 +146,8 @@ chrome.runtime.onMessage.addListener(
             break;
           }
           case 'BULK_TOGGLE': {
-            const all = await Storage.list();
-            for (const f of all) await Storage.update(f.id, { enabled: msg.enabled });
-            sendResponse({ ok: true, count: all.length });
+            const count = await Storage.bulkPatch({ enabled: msg.enabled });
+            sendResponse({ ok: true, count });
             break;
           }
           case 'INSTALL_SPA_PATCH': {
@@ -197,11 +200,22 @@ chrome.runtime.onMessage.addListener(
                 func: () => {
                   if ((window as any).__bobObserve) return;
                   const observers = new Map<string, MutationObserver>();
+                  function bobDjb2(s: string): string {
+                    let h = 5381;
+                    for (let i = 0; i < s.length; i++) {
+                      h = (((h << 5) + h) + s.charCodeAt(i)) | 0;
+                    }
+                    return (h >>> 0).toString(36);
+                  }
                   (window as any).__bobObserve = function (
-                    slug: string,
                     callback: () => void,
+                    opts?: { slug?: string },
                   ) {
-                    if (typeof slug !== 'string' || typeof callback !== 'function') return;
+                    if (typeof callback !== 'function') return;
+                    const slug =
+                      opts && typeof opts.slug === 'string' && opts.slug
+                        ? opts.slug
+                        : bobDjb2(String(callback));
                     const prev = observers.get(slug);
                     if (prev) prev.disconnect();
 
@@ -237,10 +251,13 @@ chrome.runtime.onMessage.addListener(
             break;
           }
           case 'BULK_DELETE': {
-            const all = await Storage.list();
-            for (const f of all) await Storage.remove(f.id);
-            sendResponse({ ok: true, count: all.length });
+            const count = await Storage.removeAll();
+            sendResponse({ ok: true, count });
             break;
+          }
+          default: {
+            // Unknown message — respond so the channel doesn't dangle.
+            sendResponse({ error: `unknown message type: ${(msg as { type?: string }).type}` });
           }
         }
       } catch (e) {

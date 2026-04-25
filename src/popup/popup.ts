@@ -84,36 +84,40 @@ async function loadSuggestions(hostname: string | null): Promise<Suggestion[]> {
   return [];
 }
 
-async function saveFeatures(features: Feature[]): Promise<void> {
+async function toggleViaBackground(id: string, enabled: boolean): Promise<boolean> {
   try {
-    await chrome.storage.local.set({ features });
+    const res = await chrome.runtime.sendMessage({ type: 'TOGGLE_FEATURE', id, enabled });
+    return !!(res && typeof res === 'object' && (res as { ok?: unknown }).ok);
   } catch {
-    // Outside extension context — best effort.
+    return false;
   }
 }
 
-async function bulkSetEnabled(enabled: boolean): Promise<void> {
+async function deleteViaBackground(id: string): Promise<boolean> {
+  try {
+    const res = await chrome.runtime.sendMessage({ type: 'DELETE_FEATURE', id });
+    return !!(res && typeof res === 'object' && (res as { ok?: unknown }).ok);
+  } catch {
+    return false;
+  }
+}
+
+async function bulkSetEnabled(enabled: boolean): Promise<boolean> {
   try {
     const res = await chrome.runtime.sendMessage({ type: 'BULK_TOGGLE', enabled });
-    if (res && typeof res === 'object' && (res as { ok?: unknown }).ok) return;
+    return !!(res && typeof res === 'object' && (res as { ok?: unknown }).ok);
   } catch {
-    // Fall through to direct storage edit.
+    return false;
   }
-  // Fallback: edit chrome.storage.local directly so the popup's behavior
-  // stays usable even before the background handler ships.
-  for (const f of state.features) f.enabled = enabled;
-  await saveFeatures(state.features);
 }
 
-async function bulkRemoveAll(): Promise<void> {
+async function bulkRemoveAll(): Promise<boolean> {
   try {
     const res = await chrome.runtime.sendMessage({ type: 'BULK_DELETE' });
-    if (res && typeof res === 'object' && (res as { ok?: unknown }).ok) return;
+    return !!(res && typeof res === 'object' && (res as { ok?: unknown }).ok);
   } catch {
-    // Fallthrough.
+    return false;
   }
-  state.features = [];
-  await saveFeatures([]);
 }
 
 async function dismissSuggestion(id: string): Promise<void> {
@@ -125,12 +129,23 @@ async function dismissSuggestion(id: string): Promise<void> {
   state.suggestions = state.suggestions.filter((s) => s.id !== id);
 }
 
-async function acceptSuggestion(id: string): Promise<void> {
+async function acceptSuggestion(
+  id: string,
+): Promise<{ proposedPrompt: string; hostname: string } | null> {
   try {
-    await chrome.runtime.sendMessage({ type: 'ACCEPT_SUGGESTION', id });
+    const res = await chrome.runtime.sendMessage({ type: 'ACCEPT_SUGGESTION', id });
+    if (
+      res &&
+      typeof res === 'object' &&
+      typeof (res as { proposedPrompt?: unknown }).proposedPrompt === 'string' &&
+      typeof (res as { hostname?: unknown }).hostname === 'string'
+    ) {
+      return res as { proposedPrompt: string; hostname: string };
+    }
   } catch {
     // No handler yet — silent.
   }
+  return null;
 }
 
 // ----------------------------------------------------------------------
@@ -431,9 +446,9 @@ function buildSuggestionCard(s: Suggestion): HTMLElement {
 // Top-level rendering
 // ----------------------------------------------------------------------
 
-function matchesHost(f: Feature, host: string): boolean {
-  if (!host) return false;
-  return f.urlPattern.toLowerCase().includes(host.toLowerCase());
+function matchesActiveTab(f: Feature): boolean {
+  if (!state.activeUrl) return false;
+  return patternMatchesUrl(f.urlPattern, state.activeUrl);
 }
 
 function buildSection(
@@ -507,8 +522,8 @@ function render(): void {
 
     let thisSite: Feature[] = [];
     let other: Feature[] = state.features;
-    if (state.hostname) {
-      thisSite = state.features.filter((f) => matchesHost(f, state.hostname!));
+    if (state.activeUrl && state.hostname) {
+      thisSite = state.features.filter((f) => matchesActiveTab(f));
       const thisIds = new Set(thisSite.map((f) => f.id));
       other = state.features.filter((f) => !thisIds.has(f.id));
     }
@@ -547,14 +562,20 @@ function findFeature(id: string): Feature | undefined {
 async function toggle(id: string): Promise<void> {
   const f = findFeature(id);
   if (!f) return;
-  f.enabled = !f.enabled;
-  await saveFeatures(state.features);
+  const target = !f.enabled;
+  const ok = await toggleViaBackground(id, target);
+  if (!ok) {
+    showToast('Toggle failed');
+    return;
+  }
+  await refreshFromBackend();
   render();
 
   // Reload the active tab when our toggle would actually change what's
   // rendered there. For ON: re-running picks up the new feature. For OFF:
   // a reload clears any installed effects.
-  const result = await maybeReloadActiveTab(f);
+  const fresh = findFeature(id) ?? f;
+  const result = await maybeReloadActiveTab(fresh);
   if (result.reloaded) {
     showToast('Reloading page…');
   } else if (result.matched) {
@@ -569,11 +590,16 @@ async function remove(id: string): Promise<void> {
   if (!f) return;
   if (!confirm(`Delete "${f.name}"?`)) return;
   const wasEnabledMatch = f.enabled;
-  state.features = state.features.filter((x) => x.id !== id);
-  await saveFeatures(state.features);
+  const snapshot = { ...f };
+  const ok = await deleteViaBackground(id);
+  if (!ok) {
+    showToast('Delete failed');
+    return;
+  }
+  await refreshFromBackend();
   render();
   if (wasEnabledMatch) {
-    const result = await maybeReloadActiveTab(f);
+    const result = await maybeReloadActiveTab(snapshot);
     if (result.reloaded) showToast('Deleted · Reloading page…');
     else showToast('Deleted');
   } else {
@@ -600,7 +626,11 @@ async function handleEdit(id: string): Promise<void> {
 }
 
 async function bulkEnable(): Promise<void> {
-  await bulkSetEnabled(true);
+  const ok = await bulkSetEnabled(true);
+  if (!ok) {
+    showToast('Bulk enable failed');
+    return;
+  }
   await refreshFromBackend();
   render();
   showToast('Enabled all features');
@@ -609,7 +639,11 @@ async function bulkEnable(): Promise<void> {
 async function bulkDisable(): Promise<void> {
   if (state.features.length === 0) return;
   if (!confirm('Disable all features?')) return;
-  await bulkSetEnabled(false);
+  const ok = await bulkSetEnabled(false);
+  if (!ok) {
+    showToast('Bulk disable failed');
+    return;
+  }
   await refreshFromBackend();
   render();
   showToast('Disabled all features');
@@ -618,7 +652,11 @@ async function bulkDisable(): Promise<void> {
 async function bulkDelete(): Promise<void> {
   if (state.features.length === 0) return;
   if (!confirm(`Delete all ${state.features.length} features? This cannot be undone.`)) return;
-  await bulkRemoveAll();
+  const ok = await bulkRemoveAll();
+  if (!ok) {
+    showToast('Bulk delete failed');
+    return;
+  }
   await refreshFromBackend();
   render();
   showToast('Deleted all features');
@@ -629,9 +667,38 @@ async function refreshFromBackend(): Promise<void> {
 }
 
 async function trySuggestion(id: string): Promise<void> {
-  await acceptSuggestion(id);
-  // Person C's accept handler drives whatever happens next (e.g. opening
-  // overlay on the matching tab). From the popup's side we just close.
+  const accepted = await acceptSuggestion(id);
+  if (!accepted) {
+    showToast('Could not accept suggestion');
+    return;
+  }
+  // Try to open the overlay on the active tab if it matches the hostname.
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab?.id && tab.url) {
+      let host: string | null = null;
+      try {
+        const u = new URL(tab.url);
+        if (u.protocol === 'http:' || u.protocol === 'https:') {
+          host = u.hostname.replace(/^www\./i, '').toLowerCase();
+        }
+      } catch {
+        host = null;
+      }
+      if (host === accepted.hostname) {
+        try {
+          await chrome.tabs.sendMessage(tab.id, {
+            type: 'OPEN_OVERLAY_WITH_PROMPT',
+            prompt: accepted.proposedPrompt,
+          });
+        } catch {
+          // Content script may not be loaded; fall through.
+        }
+      }
+    }
+  } catch {
+    // ignore
+  }
   window.close();
 }
 

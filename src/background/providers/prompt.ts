@@ -36,7 +36,7 @@ Rules for the generated code:
 - Wrap logic in:
     (function(){ try { /* logic */ } catch(e){ console.error('[bob]', e); window.__bobLastError = String(e); } })();
 - Be IDEMPOTENT — re-running must not duplicate effects. Tag injected elements with data-bob="<feature-slug>" and check for existence before creating.
-- Be REACTIVE — for SPAs and infinite-scroll content, use a MutationObserver on document.body that re-applies the feature when new matching elements appear. There is a helper available on window.__bobObserve(callback, opts) that wraps this — use it when present, fall back to manual MutationObserver otherwise. Always disconnect on cleanup.
+- Be REACTIVE — for SPAs and infinite-scroll content, use a MutationObserver on document.body that re-applies the feature when new matching elements appear. There is a helper available on window.__bobObserve(callback, opts) — call it as window.__bobObserve(function(){ /* re-apply */ }, { slug: '<feature-slug>' }). The slug must match the data-bob attribute used for idempotency so toggling a feature off/on doesn't stack observers. If __bobObserve is absent, fall back to manual MutationObserver and always disconnect on cleanup.
 - DO NOT use innerHTML, outerHTML, insertAdjacentHTML, or document.write. Many sites enforce Trusted Types and these will throw. Use createElement + textContent + appendChild + classList + setAttribute instead.
 - Prefer stable selectors: aria-label, role, data-testid, semantic HTML, ID. Avoid class names that look auto-generated (css-XXXXXX, jsx-XXXXXX).
 - Do NOT use eval, new Function, or string-based setTimeout.

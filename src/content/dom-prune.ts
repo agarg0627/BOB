@@ -265,16 +265,20 @@ function emitOne(el: Element, depth: number, state: State): void {
     return;
   }
 
-  // Leaf element: optionally show [text N chars].
+  // Leaf element: include short text inline so the LLM sees actual labels
+  // on spans/divs/etc. Long text falls back to a length summary.
   if (!hasChildren) {
-    const txt = safeTextContent(el).trim();
-    if (txt.length > 0) {
+    const raw = safeTextContent(el);
+    const txt = raw.replace(/\s+/g, ' ').trim();
+    if (txt.length === 0) {
+      tryPush(state, indentStr(depth) + selfClose);
+    } else if (txt.length <= MAX_INLINE_TEXT) {
+      tryPush(state, indentStr(depth) + `${open}${txt}${close}`);
+    } else {
       tryPush(
         state,
-        indentStr(depth) + `${open}[text ${txt.length} chars]${close}`,
+        indentStr(depth) + `${open}${truncate(txt, MAX_INLINE_TEXT)}${close}`,
       );
-    } else {
-      tryPush(state, indentStr(depth) + selfClose);
     }
     return;
   }

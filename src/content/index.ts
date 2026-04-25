@@ -5,7 +5,7 @@ import { installObserverHelper } from './observer-helper';
 import { initLifecycle } from './lifecycle';
 import { initBehaviorTracker } from './behavior-tracker';
 import { prunePage } from './dom-prune';
-import { initOverlay, openOverlayForEdit } from './overlay/overlay';
+import { initOverlay, openOverlayForEdit, openOverlayWithPrompt } from './overlay/overlay';
 import type { Feature, GenerateResponse, Message } from '../shared/types';
 
 console.log('[bob] content script loaded on', location.href);
@@ -92,33 +92,62 @@ initOverlay({
     // Reflexion: retry up to 2 times with previousError feedback
     for (let retry = 0; retry < 2 && !result.ok; retry++) {
       console.log('[bob] reflexion retry', retry + 1, 'error was:', result.error);
-      const fixed = await send<GenerateResponse | { error: string }>({
-        type: 'GENERATE_FEATURE',
-        req: {
-          prompt: feature.userPrompt,
-          url: location.href,
-          existingCode: installed.code,
-          previousError: result.error,
-        },
-      });
-      if ('error' in fixed) break;
-      // Replace the broken feature with the fixed one
-      await send({ type: 'DELETE_FEATURE', id: installed.id });
-      installed = await send<Feature>({
-        type: 'INSTALL_FEATURE',
-        feature: {
-          ...fixed,
-          userPrompt: feature.userPrompt,
-          enabled: true,
-          runCount: 0,
-          errorCount: 0,
-        },
-      });
-      result = await send<{ ok: boolean; error?: string }>({
-        type: 'RUN_FEATURE',
-        featureId: installed.id,
-        code: installed.code,
-      });
+      // Re-prune the DOM so the model has current page context for the fix.
+      let retryDom: string | undefined;
+      try {
+        retryDom = prunePage();
+      } catch {
+        retryDom = undefined;
+      }
+      let fixed: GenerateResponse | { error: string };
+      try {
+        fixed = await send<GenerateResponse | { error: string }>({
+          type: 'GENERATE_FEATURE',
+          req: {
+            prompt: feature.userPrompt,
+            url: location.href,
+            domSnapshot: retryDom,
+            existingCode: installed.code,
+            existingFeatureName: feature.name,
+            previousError: result.error,
+          },
+        });
+      } catch (e) {
+        console.warn('[bob] reflexion generate failed:', e);
+        break;
+      }
+      if (typeof (fixed as GenerateResponse).code !== 'string') break;
+      const okFixed = fixed as GenerateResponse;
+      // Replace the broken feature with the fixed one. Preserve parent /
+      // iteration linkage from the user-supplied feature so the iteration
+      // tree stays intact across retries.
+      try {
+        await send({ type: 'DELETE_FEATURE', id: installed.id });
+        installed = await send<Feature>({
+          type: 'INSTALL_FEATURE',
+          feature: {
+            ...okFixed,
+            userPrompt: feature.userPrompt,
+            enabled: true,
+            runCount: 0,
+            errorCount: 0,
+            ...(feature.parentFeatureId
+              ? {
+                  parentFeatureId: feature.parentFeatureId,
+                  iterationNumber: feature.iterationNumber,
+                }
+              : {}),
+          },
+        });
+        result = await send<{ ok: boolean; error?: string }>({
+          type: 'RUN_FEATURE',
+          featureId: installed.id,
+          code: installed.code,
+        });
+      } catch (e) {
+        console.warn('[bob] reflexion install/run failed:', e);
+        break;
+      }
     }
 
     // Record the final result
@@ -154,6 +183,15 @@ chrome.runtime.onMessage.addListener((msg: Message, _sender, sendResponse) => {
         sendResponse({ ok: false, error: String(e) });
       }
     })();
+    return true;
+  }
+  if (msg.type === 'OPEN_OVERLAY_WITH_PROMPT') {
+    try {
+      openOverlayWithPrompt(msg.prompt);
+      sendResponse({ ok: true });
+    } catch (e) {
+      sendResponse({ ok: false, error: String(e) });
+    }
     return true;
   }
   return false;

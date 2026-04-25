@@ -48,11 +48,12 @@ function toGeminiContents(
 
     if (msg.role === 'tool') {
       // Gemini has no dedicated tool role. Tool results go as user-role
-      // messages with functionResponse parts. Merge consecutive tool
-      // messages into a single user turn.
+      // messages with functionResponse parts, correlated by function NAME
+      // (not by id like Anthropic/OpenAI). Merge consecutive tool messages
+      // into a single user turn.
       const part: GeminiPart = {
         functionResponse: {
-          name: msg.toolCallId ?? 'unknown',
+          name: msg.toolName ?? 'unknown',
           response: { content: msg.content },
         },
       };

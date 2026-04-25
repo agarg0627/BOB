@@ -5,6 +5,9 @@ export interface ProviderMessage {
   content: string;
   toolCalls?: ToolCall[];
   toolCallId?: string;
+  // Function name for tool-role messages. Anthropic and OpenAI correlate
+  // tool results by id; Gemini correlates by function name.
+  toolName?: string;
 }
 
 export interface ProviderTurnResponse {
