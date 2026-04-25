@@ -3,19 +3,81 @@
 <head>
   <meta charset="UTF-8" />
   <title>BOB — overlay sandbox</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 40px 56px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #222;
+      background: #fafafa;
+      max-width: 720px;
+      line-height: 1.55;
+    }
+    h1 { font-size: 22px; margin-bottom: 4px; }
+    .meta { color: #666; font-size: 13px; margin-bottom: 24px; }
+    kbd {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      background: #eee;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      padding: 1px 6px;
+    }
+    button {
+      font: inherit;
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      background: white;
+      cursor: pointer;
+      margin-right: 8px;
+    }
+    /* Hostile selector to verify shadow DOM isolation. If the overlay
+       text turns red or the modal width breaks, isolation failed. */
+    * {
+      box-sizing: border-box;
+    }
+  </style>
 </head>
 <body>
   <h1>Overlay Sandbox</h1>
-  <p>Press Cmd+K (or Ctrl+K) to open the overlay.</p>
-  <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>
+  <p class="meta">
+    Press <kbd>⌘K</kbd> / <kbd>Ctrl+K</kbd> to toggle the overlay.
+    <button id="open-btn">openOverlay()</button>
+    <button id="close-btn">closeOverlay()</button>
+  </p>
+
+  <p>
+    Lorem ipsum dolor sit amet, consectetur adipiscing elit. Type
+    <code>error</code> into the prompt to verify the error state.
+  </p>
+  <p>
+    Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+    Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris
+    nisi ut aliquip ex ea commodo consequat.
+  </p>
+  <p>
+    Duis aute irure dolor in reprehenderit in voluptate velit esse
+    cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat
+    cupidatat non proident, sunt in culpa qui officia deserunt mollit
+    anim id est laborum.
+  </p>
+
   <script type="module">
-    import { initOverlay } from '../src/content/overlay/overlay.ts';
+    import { initOverlay, openOverlay, closeOverlay } from '../src/content/overlay/overlay.ts';
+
     initOverlay({
       onSubmit: async (prompt) => {
         await new Promise((r) => setTimeout(r, 800));
+        if (prompt.trim().toLowerCase() === 'error') {
+          throw new Error('synthetic failure for testing');
+        }
         console.log('submitted:', prompt);
       },
     });
+
+    document.getElementById('open-btn').addEventListener('click', openOverlay);
+    document.getElementById('close-btn').addEventListener('click', closeOverlay);
   </script>
 </body>
 </html>
