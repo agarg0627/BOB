@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>BOB — dom-prune sandbox</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #222;
+      background: #fafafa;
+    }
+    header {
+      padding: 16px 32px;
+      background: #1a1a1a;
+      color: white;
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+    nav { display: flex; gap: 16px; }
+    nav a { color: white; text-decoration: none; }
+    main {
+      display: grid;
+      grid-template-columns: 1fr 220px;
+      gap: 24px;
+      padding: 24px 32px;
+      max-width: 960px;
+    }
+    article {
+      background: white;
+      padding: 16px;
+      border-radius: 6px;
+      border: 1px solid #ddd;
+      margin-bottom: 12px;
+    }
+    aside {
+      background: #efefef;
+      padding: 16px;
+      border-radius: 6px;
+      align-self: start;
+    }
+    aside ul { list-style: none; padding: 0; }
+    aside li { padding: 4px 0; }
+    footer {
+      padding: 16px 32px;
+      border-top: 1px solid #ddd;
+      color: #666;
+      font-size: 13px;
+    }
+    pre {
+      background: #111;
+      color: #0f0;
+      padding: 16px;
+      margin: 0;
+      overflow: auto;
+      font-size: 12px;
+      max-height: 50vh;
+    }
+    .controls { display: flex; gap: 8px; padding: 8px 32px; background: #eee; }
+    .controls button { padding: 6px 12px; }
+  </style>
+</head>
+<body>
+  <header role="banner">
+    <strong>SampleSite</strong>
+    <nav aria-label="Primary">
+      <a href="/home">Home</a>
+      <a href="/posts">Posts</a>
+      <a href="/about">About</a>
+      <a href="/contact">Contact</a>
+    </nav>
+    <button type="button" aria-label="Open menu">☰</button>
+  </header>
+
+  <div class="controls">
+    <button id="run-btn" type="button">Run prunePage()</button>
+    <button id="run-tight-btn" type="button">Run with maxChars=600</button>
+    <span id="meta" style="align-self: center; color:#666; font-size: 12px;"></span>
+  </div>
+
+  <main id="content">
+    <section aria-label="Posts">
+      <article data-testid="post-card">
+        <h2>First Post</h2>
+        <p>
+          Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do
+          eiusmod tempor incididunt ut labore et dolore magna aliqua. This
+          paragraph deliberately runs past the eighty-character cap to
+          exercise the [text N chars] branch.
+        </p>
+        <a href="/posts/1">Read more</a>
+      </article>
+      <article data-testid="post-card">
+        <h2>Second Post</h2>
+        <p>Short body.</p>
+        <a href="/posts/2">Read more</a>
+      </article>
+      <article data-testid="post-card">
+        <h2>Third Post</h2>
+        <p>Another short body.</p>
+        <a href="/posts/3">Read more</a>
+      </article>
+      <article data-testid="post-card">
+        <h2>Fourth Post</h2>
+        <p>Yet another short body.</p>
+        <a href="/posts/4">Read more</a>
+      </article>
+      <article data-testid="post-card">
+        <h2>Fifth Post</h2>
+        <p>Still going.</p>
+        <a href="/posts/5">Read more</a>
+      </article>
+      <article data-testid="post-card">
+        <h2>Sixth Post</h2>
+        <p>Last one.</p>
+        <a href="/posts/6">Read more</a>
+      </article>
+    </section>
+
+    <aside aria-label="Sidebar">
+      <h3>Tags</h3>
+      <ul>
+        <li><a href="/t/news">news</a></li>
+        <li><a href="/t/tech">tech</a></li>
+        <li><a href="/t/life">life</a></li>
+      </ul>
+      <h3>Subscribe</h3>
+      <form>
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" placeholder="you@example.com" />
+        <button type="submit">Subscribe</button>
+      </form>
+      <!-- A class-only element to exercise the class fallback path. -->
+      <div class="css-randomhash _internal real-tag widget-card">
+        <p>Footer note in sidebar.</p>
+      </div>
+    </aside>
+  </main>
+
+  <footer>
+    <small>© 2026 SampleSite. <a href="/legal/privacy">Privacy</a> · <a href="/legal/tos">Terms</a></small>
+  </footer>
+
+  <!-- These should all be skipped from output. -->
+  <svg xmlns="http://www.w3.org/2000/svg" width="0" height="0">
+    <path d="M0 0L1 1" />
+  </svg>
+  <iframe src="https://example.com/some/very/long/iframe/source/path/that/will/get/truncated/by/dom-prune"></iframe>
+  <script>console.log('this script body should not appear in pruned output');</script>
+  <noscript>js-disabled fallback</noscript>
+
+  <h2>Pruned output</h2>
+  <pre id="out">(click a button)</pre>
+
+  <script type="module">
+    import { prunePage } from '../src/content/dom-prune.ts';
+
+    const outEl = document.getElementById('out');
+    const metaEl = document.getElementById('meta');
+
+    function run(opts) {
+      console.time('prunePage');
+      const text = prunePage(opts);
+      console.timeEnd('prunePage');
+      outEl.textContent = text;
+      metaEl.textContent = `${text.length} chars · ${text.split('\n').length} lines`;
+      console.log(text);
+    }
+
+    document.getElementById('run-btn').addEventListener('click', () => run());
+    document.getElementById('run-tight-btn').addEventListener('click', () =>
+      run({ maxChars: 600 }),
+    );
+
+    // Auto-run once on load.
+    run();
+  </script>
+</body>
+</html>
