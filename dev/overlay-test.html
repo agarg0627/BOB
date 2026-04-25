@@ -32,6 +32,7 @@
       cursor: pointer;
       margin-right: 8px;
     }
+    code.tag { background: #eef; padding: 1px 5px; border-radius: 3px; font-size: 12.5px; }
     /* Hostile selector to verify shadow DOM isolation. If the overlay
        text turns red or the modal width breaks, isolation failed. */
     * {
@@ -48,31 +49,77 @@
   </p>
 
   <p>
-    Lorem ipsum dolor sit amet, consectetur adipiscing elit. Type
-    <code>error</code> into the prompt to verify the error state.
+    Test triggers (mock callbacks):
+  </p>
+  <ul>
+    <li>Type a prompt containing <code class="tag">error-gen</code> to trigger an
+      <em>onGenerate</em> rejection (error appears in the prompt area).</li>
+    <li>In the preview, edit the name to include <code class="tag">error-install</code>
+      and click Install to trigger an <em>onInstall</em> rejection (error appears in the
+      preview area, button re-enables).</li>
+    <li>Click Install (with no error trigger) to see the success toast at bottom-right.</li>
+    <li>Click Cancel to return to the prompt with the original text pre-filled.</li>
+    <li>Press <kbd>Esc</kbd> from any state to close.</li>
+    <li>In the preview, press <kbd>⌘↵</kbd> / <kbd>Ctrl+↵</kbd> to install.</li>
+  </ul>
+
+  <p>
+    Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor
+    incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud
+    exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
   </p>
   <p>
-    Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
-    Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris
-    nisi ut aliquip ex ea commodo consequat.
-  </p>
-  <p>
-    Duis aute irure dolor in reprehenderit in voluptate velit esse
-    cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat
-    cupidatat non proident, sunt in culpa qui officia deserunt mollit
-    anim id est laborum.
+    Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu
+    fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in
+    culpa qui officia deserunt mollit anim id est laborum.
   </p>
 
   <script type="module">
     import { initOverlay, openOverlay, closeOverlay } from '../src/content/overlay/overlay.ts';
 
+    const SAMPLE_CODE = `(function () {
+  try {
+    // Hide every <img> on the page; idempotent via a sentinel attr.
+    var TAG = "data-bob-hide-images";
+    if (document.documentElement.getAttribute(TAG) === "1") return;
+    document.documentElement.setAttribute(TAG, "1");
+
+    function hideAll(root) {
+      var imgs = root.querySelectorAll("img");
+      for (var i = 0; i < imgs.length; i++) {
+        imgs[i].style.display = "none";
+      }
+    }
+    hideAll(document);
+
+    var mo = new MutationObserver(function (muts) {
+      for (var j = 0; j < muts.length; j++) hideAll(document);
+    });
+    mo.observe(document.documentElement, { childList: true, subtree: true });
+  } catch (e) {
+    console.error("[bob]", e);
+  }
+})();`;
+
     initOverlay({
-      onSubmit: async (prompt) => {
+      onGenerate: async (prompt) => {
         await new Promise((r) => setTimeout(r, 800));
-        if (prompt.trim().toLowerCase() === 'error') {
-          throw new Error('synthetic failure for testing');
+        if (prompt.toLowerCase().includes('error-gen')) {
+          throw new Error('synthetic generate failure');
         }
-        console.log('submitted:', prompt);
+        return {
+          code: SAMPLE_CODE,
+          name: 'Hide All Images',
+          description: 'Hides every <img> element on the current page, including ones added later.',
+          urlPattern: '*://example.com/*',
+        };
+      },
+      onInstall: async (feature) => {
+        await new Promise((r) => setTimeout(r, 400));
+        if (feature.name.toLowerCase().includes('error-install')) {
+          throw new Error('synthetic install failure');
+        }
+        console.log('install:', feature);
       },
     });
 
