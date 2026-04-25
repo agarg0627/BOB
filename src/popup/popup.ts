@@ -636,6 +636,17 @@ async function handleEdit(id: string): Promise<void> {
   }
 }
 
+async function reloadActiveTab(): Promise<void> {
+  // Bulk actions change which features run on the active tab, so reload it
+  // to apply the new state immediately. Best-effort — silent if unavailable.
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab?.id) await chrome.tabs.reload(tab.id);
+  } catch {
+    /* ignore */
+  }
+}
+
 async function bulkEnable(): Promise<void> {
   const ok = await bulkSetEnabled(true);
   if (!ok) {
@@ -645,6 +656,7 @@ async function bulkEnable(): Promise<void> {
   await refreshFromBackend();
   render();
   showToast('Enabled all features');
+  await reloadActiveTab();
 }
 
 async function bulkDisable(): Promise<void> {
@@ -658,6 +670,7 @@ async function bulkDisable(): Promise<void> {
   await refreshFromBackend();
   render();
   showToast('Disabled all features');
+  await reloadActiveTab();
 }
 
 async function bulkDelete(): Promise<void> {
@@ -671,6 +684,7 @@ async function bulkDelete(): Promise<void> {
   await refreshFromBackend();
   render();
   showToast('Deleted all features');
+  await reloadActiveTab();
 }
 
 async function refreshFromBackend(): Promise<void> {

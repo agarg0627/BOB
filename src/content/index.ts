@@ -6,6 +6,7 @@ import { initLifecycle } from './lifecycle';
 import { initBehaviorTracker } from './behavior-tracker';
 import { prunePage } from './dom-prune';
 import { initOverlay, openOverlayForEdit, openOverlayWithPrompt } from './overlay/overlay';
+import { showActiveBadge } from './page-badge';
 import type { Feature, GenerateResponse, Message } from '../shared/types';
 
 console.log('[bob] content script loaded on', location.href);
@@ -21,6 +22,9 @@ initLifecycle({
     try {
       const r = await runAllForUrl(location.href);
       console.log('[bob] page ready, ran', r.ran, 'features, errors:', r.errors);
+      if (r.ran > 0) {
+        try { showActiveBadge(r.ran); } catch { /* badge is non-critical */ }
+      }
     } catch (e) {
       console.error('[bob] runAllForUrl on page ready failed:', e);
     }
@@ -29,6 +33,9 @@ initLifecycle({
     try {
       const r = await runAllForUrl(location.href);
       console.log('[bob] url change, ran', r.ran, 'features, errors:', r.errors);
+      if (r.ran > 0) {
+        try { showActiveBadge(r.ran); } catch { /* badge is non-critical */ }
+      }
     } catch (e) {
       console.error('[bob] runAllForUrl on url change failed:', e);
     }
@@ -52,6 +59,8 @@ initOverlay({
         domSnapshot,
         existingCode: options?.existingCode,
         existingFeatureName: options?.existingFeatureName,
+        effortMode: options?.effortMode,
+        refinementHistory: options?.refinementHistory,
       },
     });
     if ('error' in res) throw new Error(res.error);
@@ -163,6 +172,11 @@ initOverlay({
     if (!result.ok) {
       throw new Error(result.error || 'feature failed to run');
     }
+
+    // Hand the popup-side caller the id of the (possibly reflexion-replaced)
+    // feature actually living in storage now, so it can deep-link or
+    // highlight without re-querying.
+    return { id: installed.id };
   },
 });
 

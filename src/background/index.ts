@@ -5,6 +5,8 @@ import { recordResult } from './error-recorder';
 import {
   recordEvent,
   getSuggestions,
+  getVisibleSuggestions,
+  setSuggestionState,
   dismissSuggestion,
   acceptSuggestion,
 } from './suggestions-engine';
@@ -253,6 +255,45 @@ chrome.runtime.onMessage.addListener(
           case 'BULK_DELETE': {
             const count = await Storage.removeAll();
             sendResponse({ ok: true, count });
+            break;
+          }
+          case 'GET_SUGGESTIONS_VISIBLE': {
+            const list = await getVisibleSuggestions(msg.hostname);
+            sendResponse(list);
+            break;
+          }
+          case 'SET_SUGGESTION_STATE': {
+            await setSuggestionState(msg.id, msg.state);
+            sendResponse({ ok: true });
+            break;
+          }
+          case 'EXPORT_FEATURES': {
+            const all = await Storage.list();
+            const json = JSON.stringify({
+              version: 1,
+              exportedAt: Date.now(),
+              features: all,
+            }, null, 2);
+            sendResponse({ json });
+            break;
+          }
+          case 'IMPORT_FEATURES': {
+            const parsed = JSON.parse(msg.json);
+            if (!parsed.features || !Array.isArray(parsed.features)) {
+              sendResponse({ error: 'Invalid format' });
+              break;
+            }
+            if (msg.mode === 'replace') {
+              const existing = await Storage.list();
+              for (const f of existing) await Storage.remove(f.id);
+            }
+            let count = 0;
+            for (const f of parsed.features) {
+              const { id, createdAt, ...rest } = f;
+              await Storage.add(rest);
+              count++;
+            }
+            sendResponse({ count });
             break;
           }
           default: {
