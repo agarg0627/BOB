@@ -147,6 +147,95 @@ chrome.runtime.onMessage.addListener(
             sendResponse({ ok: true, count: all.length });
             break;
           }
+          case 'INSTALL_SPA_PATCH': {
+            const tabId = sender.tab?.id;
+            if (tabId === undefined) {
+              sendResponse({ ok: false, error: 'no tab id' });
+              break;
+            }
+            try {
+              await chrome.scripting.executeScript({
+                target: { tabId },
+                world: 'MAIN',
+                func: () => {
+                  if ((window as any).__bobSpaPatched) return;
+                  (window as any).__bobSpaPatched = true;
+                  const fire = () =>
+                    window.dispatchEvent(new CustomEvent('__bob_url_change'));
+                  const _ps = history.pushState;
+                  history.pushState = function () {
+                    const r = _ps.apply(this, arguments as any);
+                    fire();
+                    return r;
+                  };
+                  const _rs = history.replaceState;
+                  history.replaceState = function () {
+                    const r = _rs.apply(this, arguments as any);
+                    fire();
+                    return r;
+                  };
+                  window.addEventListener('popstate', fire);
+                  window.addEventListener('hashchange', fire);
+                },
+              });
+              sendResponse({ ok: true });
+            } catch (e) {
+              sendResponse({ ok: false, error: String(e) });
+            }
+            break;
+          }
+          case 'INSTALL_OBSERVER_HELPER': {
+            const tabId = sender.tab?.id;
+            if (tabId === undefined) {
+              sendResponse({ ok: false, error: 'no tab id' });
+              break;
+            }
+            try {
+              await chrome.scripting.executeScript({
+                target: { tabId },
+                world: 'MAIN',
+                func: () => {
+                  if ((window as any).__bobObserve) return;
+                  const observers = new Map<string, MutationObserver>();
+                  (window as any).__bobObserve = function (
+                    slug: string,
+                    callback: () => void,
+                  ) {
+                    if (typeof slug !== 'string' || typeof callback !== 'function') return;
+                    const prev = observers.get(slug);
+                    if (prev) prev.disconnect();
+
+                    try {
+                      callback();
+                    } catch (e) {
+                      console.error('[bob] observer init for ' + slug + ' threw:', e);
+                    }
+
+                    let timer: number | undefined;
+                    const observer = new MutationObserver(() => {
+                      if (timer !== undefined) clearTimeout(timer);
+                      timer = window.setTimeout(() => {
+                        try {
+                          callback();
+                        } catch (e) {
+                          console.error('[bob] observer cb for ' + slug + ' threw:', e);
+                        }
+                      }, 100);
+                    });
+                    observer.observe(document.body || document.documentElement, {
+                      childList: true,
+                      subtree: true,
+                    });
+                    observers.set(slug, observer);
+                  };
+                },
+              });
+              sendResponse({ ok: true });
+            } catch (e) {
+              sendResponse({ ok: false, error: String(e) });
+            }
+            break;
+          }
           case 'BULK_DELETE': {
             const all = await Storage.list();
             for (const f of all) await Storage.remove(f.id);

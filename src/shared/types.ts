@@ -100,4 +100,6 @@ export type Message =
   | { type: 'RUN_FEATURE'; featureId: string; code: string }
   | { type: 'GET_SETTINGS' }
   | { type: 'SET_SETTINGS'; settings: Partial<ExtensionSettings> }
-  | { type: 'RECORD_FEATURE_RESULT'; id: string; ok: boolean; error?: string };
+  | { type: 'RECORD_FEATURE_RESULT'; id: string; ok: boolean; error?: string }
+  | { type: 'INSTALL_SPA_PATCH' }
+  | { type: 'INSTALL_OBSERVER_HELPER' };
