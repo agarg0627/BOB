@@ -9,6 +9,14 @@ export interface ExtensionSettings {
   effortMode?: EffortMode;
 }
 
+// One turn of the user/assistant refinement conversation. Past assistant
+// turns carry a short summary of what was built, not the full code, so
+// the LLM can see intent without re-ingesting prior outputs verbatim.
+export interface RefinementTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 export interface ToolCall {
   id: string;
   name: 'query_dom' | 'test_code';
@@ -37,6 +45,8 @@ export interface UserBehaviorEvent {
   metadata?: Record<string, unknown>;
 }
 
+export type SuggestionDismissalState = 'none' | 'later' | 'never';
+
 export interface Suggestion {
   id: string;
   hostname: string;
@@ -45,9 +55,13 @@ export interface Suggestion {
   confidence: number;
   evidenceCount: number;
   createdAt: number;
-  dismissed?: boolean;
-  dismissalState?: 'none' | 'later' | 'never';
+  // Three-state dismissal. `dismissed` (legacy) is mirrored from this for
+  // backward compat with rows written before the field was introduced.
+  dismissalState?: SuggestionDismissalState;
+  // When `dismissalState === 'later'`, the suggestion auto-revives once
+  // Date.now() exceeds this timestamp.
   laterUntil?: number;
+  dismissed?: boolean;
 }
 
 
@@ -77,8 +91,13 @@ export interface GenerateRequest {
   existingFeatureName?: string;
   previousError?: string;
   tabId?: number;
+  // Conversational refinement: prior turns of (user prompt, assistant
+  // summary). When present together with existingCode, the agent treats
+  // the new prompt as a refinement, not a replacement.
+  refinementHistory?: RefinementTurn[];
+  // 'high' enables provider-side reasoning/thinking and raises the
+  // agent's iteration cap. Defaults to 'standard'.
   effortMode?: EffortMode;
-  refinementHistory?: { role: 'user' | 'assistant'; content: string }[];
 }
 
 export interface GenerateResponse {
@@ -89,11 +108,7 @@ export interface GenerateResponse {
 }
 
 export type Message =
-| { type: 'GENERATE_FEATURE'
-  | { type: 'GET_SUGGESTIONS_VISIBLE'; hostname?: string }
-  | { type: 'SET_SUGGESTION_STATE'; id: string; state: 'none' | 'later' | 'never' }
-  | { type: 'EXPORT_FEATURES' }
-  | { type: 'IMPORT_FEATURES'; json: string; mode: 'merge' | 'replace' }; req: GenerateRequest }
+  | { type: 'GENERATE_FEATURE'; req: GenerateRequest }
   | { type: 'TOOL_QUERY_DOM'; selector: string; tabId: number }
   | { type: 'TOOL_TEST_CODE'; code: string; tabId: number }
   | { type: 'TRACK_BEHAVIOR'; event: UserBehaviorEvent }
@@ -114,4 +129,8 @@ export type Message =
   | { type: 'SET_SETTINGS'; settings: Partial<ExtensionSettings> }
   | { type: 'RECORD_FEATURE_RESULT'; id: string; ok: boolean; error?: string }
   | { type: 'INSTALL_SPA_PATCH' }
-  | { type: 'INSTALL_OBSERVER_HELPER' };
+  | { type: 'INSTALL_OBSERVER_HELPER' }
+  | { type: 'GET_SUGGESTIONS_VISIBLE'; hostname?: string }
+  | { type: 'SET_SUGGESTION_STATE'; id: string; state: SuggestionDismissalState }
+  | { type: 'EXPORT_FEATURES' }
+  | { type: 'IMPORT_FEATURES'; json: string; mode?: 'replace' | 'merge' };

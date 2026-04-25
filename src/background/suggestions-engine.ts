@@ -13,8 +13,14 @@
 // as optional; not implemented here. The tracker still emits
 // time_on_site events so a future heuristic can pick them up without
 // changing the data plane.
-import type { Suggestion, UserBehaviorEvent } from '../shared/types';
+import type {
+  Suggestion,
+  SuggestionDismissalState,
+  UserBehaviorEvent,
+} from '../shared/types';
 import { withStorageLock } from '../shared/storage';
+
+const LATER_COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
 
 const MAX_BEHAVIOR_EVENTS = 500;
 const ANALYZE_THROTTLE_MS = 60_000;
@@ -86,6 +92,19 @@ function signatureKey(ev: UserBehaviorEvent): string {
 
 function suggestionId(hostname: string, sigKey: string): string {
   return `auto-dismiss::${hostname}::${djb2(sigKey)}`;
+}
+
+// Decide whether a suggestion is currently visible. Handles both the
+// new dismissalState field and the legacy `dismissed` boolean for rows
+// written before three-state dismissal landed.
+function isVisible(s: Suggestion, now: number): boolean {
+  if (s.dismissalState === 'never') return false;
+  if (s.dismissalState === 'later') {
+    return (s.laterUntil ?? 0) <= now;
+  }
+  // No dismissalState (legacy / fresh row) — fall back to the boolean.
+  if (s.dismissalState === undefined && s.dismissed) return false;
+  return true;
 }
 
 export async function recordEvent(event: UserBehaviorEvent): Promise<void> {
@@ -165,6 +184,20 @@ async function analyzeAndUpsertLocked(hostname: string): Promise<void> {
     const idx = suggestions.findIndex((s) => s.id === id);
     if (idx >= 0) {
       const existing = suggestions[idx];
+      // Three-state dedup: respect the user's prior decisions.
+      // - 'never' → never re-upsert
+      // - 'later' still cooling down → don't surface again yet
+      // - 'later' expired or 'none'/legacy → revive and refresh fields
+      if (existing.dismissalState === 'never') continue;
+      if (
+        existing.dismissalState === 'later' &&
+        (existing.laterUntil ?? 0) > now
+      ) {
+        continue;
+      }
+      const reviving =
+        existing.dismissalState === 'later' &&
+        (existing.laterUntil ?? 0) <= now;
       suggestions[idx] = {
         ...existing,
         proposedPrompt,
@@ -175,6 +208,12 @@ async function analyzeAndUpsertLocked(hostname: string): Promise<void> {
         // reflects when the suggestion first appeared, not the latest
         // upsert.
         createdAt: existing.createdAt,
+        // On revival, clear the dismissal so the suggestion shows up
+        // again. Legacy rows with only `dismissed: true` are also
+        // cleared since we're explicitly re-promoting this signature.
+        ...(reviving || existing.dismissed
+          ? { dismissalState: 'none' as SuggestionDismissalState, laterUntil: undefined, dismissed: false }
+          : {}),
       };
     } else {
       suggestions.push({
@@ -185,6 +224,7 @@ async function analyzeAndUpsertLocked(hostname: string): Promise<void> {
         confidence,
         evidenceCount: g.count,
         createdAt: now,
+        dismissalState: 'none',
       });
     }
   }
@@ -194,14 +234,22 @@ async function analyzeAndUpsertLocked(hostname: string): Promise<void> {
 }
 
 function enforcePerHostnameCap(suggestions: Suggestion[], hostname: string): void {
+  const now = Date.now();
   const active = suggestions
-    .filter((s) => s.hostname === hostname && !s.dismissed)
+    .filter((s) => s.hostname === hostname && isVisible(s, now))
     .sort((a, b) => a.createdAt - b.createdAt); // oldest first
   let overflow = active.length - PER_HOSTNAME_CAP;
   for (let i = 0; i < active.length && overflow > 0; i++) {
     const idx = suggestions.findIndex((s) => s.id === active[i].id);
     if (idx >= 0) {
-      suggestions[idx] = { ...suggestions[idx], dismissed: true };
+      // Capped suggestions are demoted to 'never' so they don't keep
+      // bouncing back. The legacy `dismissed` boolean is mirrored.
+      suggestions[idx] = {
+        ...suggestions[idx],
+        dismissalState: 'never',
+        laterUntil: undefined,
+        dismissed: true,
+      };
       overflow--;
     }
   }
@@ -209,8 +257,9 @@ function enforcePerHostnameCap(suggestions: Suggestion[], hostname: string): voi
 
 export async function getSuggestions(hostname?: string): Promise<Suggestion[]> {
   const list = await readSuggestions();
+  const now = Date.now();
   return list
-    .filter((s) => !s.dismissed)
+    .filter((s) => isVisible(s, now))
     .filter((s) => (hostname ? s.hostname === hostname : true))
     .sort((a, b) => {
       if (b.confidence !== a.confidence) return b.confidence - a.confidence;
@@ -218,14 +267,47 @@ export async function getSuggestions(hostname?: string): Promise<Suggestion[]> {
     });
 }
 
-export async function dismissSuggestion(id: string): Promise<void> {
+// Same shape as getSuggestions but defensively re-applies the
+// dismissal filter so callers (popup) get the canonical "what should
+// the user see right now" list. Cheap to call repeatedly.
+export async function getVisibleSuggestions(
+  hostname?: string,
+): Promise<Suggestion[]> {
+  const all = await getSuggestions(hostname);
+  const now = Date.now();
+  return all.filter(
+    (s) => s.dismissalState !== 'later' || (s.laterUntil ?? 0) <= now,
+  );
+}
+
+export async function setSuggestionState(
+  id: string,
+  state: SuggestionDismissalState,
+): Promise<void> {
   return withStorageLock(KEY_SUGGESTIONS, async () => {
     const list = await readSuggestions();
     const idx = list.findIndex((s) => s.id === id);
     if (idx < 0) return;
-    list[idx] = { ...list[idx], dismissed: true };
+    const existing = list[idx];
+    const next: Suggestion = {
+      ...existing,
+      dismissalState: state,
+      laterUntil:
+        state === 'later' ? Date.now() + LATER_COOLDOWN_MS : undefined,
+      // Keep the legacy `dismissed` boolean in sync so older code paths
+      // that still read it (e.g. popup rendering before the migration)
+      // see the right thing.
+      dismissed: state === 'never' || state === 'later',
+    };
+    list[idx] = next;
     await writeSuggestions(list);
   });
+}
+
+// Backward-compatible alias. Existing callers (DISMISS_SUGGESTION
+// handler, popup) continue to work and now get permanent dismissal.
+export async function dismissSuggestion(id: string): Promise<void> {
+  return setSuggestionState(id, 'never');
 }
 
 export async function acceptSuggestion(
@@ -238,7 +320,14 @@ export async function acceptSuggestion(
       throw new Error('suggestion not found: ' + id);
     }
     const s = list[idx];
-    list[idx] = { ...s, dismissed: true };
+    // Accepting transitions to 'never' — the user has acted on the
+    // suggestion and we shouldn't keep proposing the same one.
+    list[idx] = {
+      ...s,
+      dismissalState: 'never',
+      laterUntil: undefined,
+      dismissed: true,
+    };
     await writeSuggestions(list);
     return { proposedPrompt: s.proposedPrompt, hostname: s.hostname };
   });

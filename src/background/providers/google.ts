@@ -90,15 +90,26 @@ export const googleProvider: Provider = {
   defaultModel: 'gemini-3.1-pro-preview',
 
   async chat(args): Promise<ProviderTurnResponse> {
-    const { messages, system, tools, apiKey, model } = args;
+    const { messages, system, tools, apiKey, model, effortMode } = args;
     const chosenModel = model || googleProvider.defaultModel;
+
+    const generationConfig: Record<string, unknown> = {
+      maxOutputTokens: 4096,
+    };
+    // thinkingConfig is honoured by Gemini 2.5+/3.x reasoning-capable
+    // models. We emit it only for high-effort runs; standard mode omits
+    // the field so models that don't recognise it are unaffected.
+    if (effortMode === 'high') {
+      generationConfig.thinkingConfig = {
+        includeThoughts: false,
+        thinkingBudget: 8192,
+      };
+    }
 
     const body: Record<string, unknown> = {
       contents: toGeminiContents(messages),
       systemInstruction: { parts: [{ text: system }] },
-      generationConfig: {
-        maxOutputTokens: 4096,
-      },
+      generationConfig,
     };
 
     const toolDecls = toToolDeclarations(tools);

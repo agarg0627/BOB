@@ -1,3 +1,73 @@
+/*
+=== INTEGRATION PATCHES (for the merger) ===
+
+These changes are required in files Pair 2 does not own. The Pair 2
+branch only typechecks against the additions because the new Message
+variants are already declared in src/shared/types.ts.
+
+1. src/background/index.ts — add the following message handlers inside
+   the existing chrome.runtime.onMessage switch:
+
+     case 'GET_SUGGESTIONS_VISIBLE': {
+       const list = await getVisibleSuggestions(msg.hostname);
+       sendResponse(list);
+       break;
+     }
+     case 'SET_SUGGESTION_STATE': {
+       await setSuggestionState(msg.id, msg.state);
+       sendResponse({ ok: true });
+       break;
+     }
+     case 'EXPORT_FEATURES': {
+       const all = await Storage.list();
+       const json = JSON.stringify({
+         version: 1,
+         exportedAt: Date.now(),
+         features: all,
+       }, null, 2);
+       sendResponse({ json });
+       break;
+     }
+     case 'IMPORT_FEATURES': {
+       const parsed = JSON.parse(msg.json);
+       if (!parsed.features || !Array.isArray(parsed.features)) {
+         sendResponse({ error: 'Invalid format' });
+         break;
+       }
+       if (msg.mode === 'replace') {
+         const existing = await Storage.list();
+         for (const f of existing) await Storage.remove(f.id);
+       }
+       let count = 0;
+       for (const f of parsed.features) {
+         const { id, createdAt, ...rest } = f;
+         await Storage.add(rest);
+         count++;
+       }
+       sendResponse({ count });
+       break;
+     }
+
+   The setSuggestionState / getVisibleSuggestions imports come from
+   './suggestions-engine' alongside the existing
+   getSuggestions / dismissSuggestion / acceptSuggestion imports.
+
+2. src/background/index.ts — the existing GENERATE_FEATURE handler
+   already does `const req = { ...msg.req, tabId };` which forwards the
+   new optional fields (effortMode, refinementHistory) without change.
+   Confirm this; no code change needed if it still spreads msg.req.
+
+3. src/popup/popup.ts — bulk action handlers should reload the active
+   tab if it matches any feature's pattern. After BULK_TOGGLE /
+   BULK_DELETE succeeds, send to active tab:
+
+     const [tab] = await chrome.tabs.query({active:true,currentWindow:true});
+     if (tab?.id) chrome.tabs.reload(tab.id);
+
+   Pair 1 owns popup.ts; this is for them to wire (they may already be
+   doing it via maybeReloadActiveTab on each affected feature).
+*/
+
 import type { GenerateRequest, GenerateResponse, AgentTrace } from '../shared/types';
 import { getSettings } from './settings';
 import { dispatchTool, TOOL_DEFINITIONS } from './tools';
@@ -13,7 +83,12 @@ const PROVIDERS: Record<string, Provider> = {
   google: googleProvider,
 };
 
-const MAX_ITERATIONS = 6;
+// Standard mode caps iterations at 6. High-effort mode doubles the
+// cap because extended-thinking turns can spend multiple iterations on
+// plan exploration before the first tool call, and we want to keep
+// headroom for the subsequent tool-use cycles.
+const STANDARD_MAX_ITERATIONS = 6;
+const HIGH_EFFORT_MAX_ITERATIONS = 12;
 
 export async function runAgent(
   req: GenerateRequest,
@@ -25,6 +100,12 @@ export async function runAgent(
     throw new Error(`No API key for ${provider.name}. Open BOB options.`);
   }
 
+  // Effort mode resolution: an explicit per-request override wins, then
+  // the saved setting, then 'standard'.
+  const effortMode = req.effortMode ?? settings.effortMode ?? 'standard';
+  const maxIterations =
+    effortMode === 'high' ? HIGH_EFFORT_MAX_ITERATIONS : STANDARD_MAX_ITERATIONS;
+
   const messages: ProviderMessage[] = [
     { role: 'user', content: buildUserPrompt(req) },
   ];
@@ -34,7 +115,7 @@ export async function runAgent(
   // on the user's tab). Without one, fall back to non-tool generation.
   const tools = req.tabId !== undefined ? [...TOOL_DEFINITIONS] : [];
 
-  for (let i = 0; i < MAX_ITERATIONS; i++) {
+  for (let i = 0; i < maxIterations; i++) {
     trace.iterations++;
     const turn = await provider.chat({
       messages,
@@ -42,6 +123,7 @@ export async function runAgent(
       tools,
       apiKey,
       model: settings.model,
+      effortMode,
     });
 
     if (turn.toolCalls && turn.toolCalls.length > 0) {
@@ -75,7 +157,9 @@ export async function runAgent(
     return { ...parsed, trace };
   }
 
-  throw new Error('Agent exceeded max iterations without producing a feature');
+  throw new Error(
+    `Agent exceeded max iterations (${maxIterations}, effortMode=${effortMode}) without producing a feature`,
+  );
 }
 
 function findJsonObject(s: string): string | null {
