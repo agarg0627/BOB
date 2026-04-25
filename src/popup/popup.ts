@@ -32,7 +32,15 @@ async function getActiveTabInfo(): Promise<{ url: string | null; hostname: strin
     if (!tab?.url) return { url: null, hostname: null };
     let hostname: string | null = null;
     try {
-      hostname = new URL(tab.url).hostname.replace(/^www\./i, '').toLowerCase() || null;
+      const u = new URL(tab.url);
+      // Only treat real web pages as having a hostname for filtering.
+      // chrome:// and chrome-extension:// (e.g. the Options page itself)
+      // would otherwise parse to a meaningless hostname like the extension
+      // ID, which then excludes every stored suggestion from the engine's
+      // exact-match filter. Returning null falls back to "all hostnames".
+      if (u.protocol === 'http:' || u.protocol === 'https:') {
+        hostname = u.hostname.replace(/^www\./i, '').toLowerCase() || null;
+      }
     } catch {
       hostname = null;
     }
