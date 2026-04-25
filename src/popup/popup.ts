@@ -1,5 +1,7 @@
-// Owned by Person D. Popup UI: feature list + status surface.
-import type { Feature } from '../shared/types';
+// Owned by Person D. Popup UI: feature list + bulk actions + iteration entry
+// + suggestions + status surface.
+import type { Feature, Suggestion } from '../shared/types';
+import { startEdit, maybeReloadActiveTab, patternMatchesUrl } from './iteration';
 
 const root = document.getElementById('root')!;
 const toastEl = document.getElementById('toast') as HTMLDivElement | null;
@@ -7,11 +9,15 @@ const toastEl = document.getElementById('toast') as HTMLDivElement | null;
 interface AppState {
   features: Feature[];
   hostname: string | null;
+  activeUrl: string | null;
+  suggestions: Suggestion[];
 }
 
 const state: AppState = {
   features: [],
   hostname: null,
+  activeUrl: null,
+  suggestions: [],
 };
 
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
@@ -20,17 +26,19 @@ let toastTimer: ReturnType<typeof setTimeout> | null = null;
 // Data plumbing
 // ----------------------------------------------------------------------
 
-async function getActiveHostname(): Promise<string | null> {
+async function getActiveTabInfo(): Promise<{ url: string | null; hostname: string | null }> {
   try {
-    const [tab] = await chrome.tabs.query({
-      active: true,
-      currentWindow: true,
-    });
-    if (!tab?.url) return null;
-    const url = new URL(tab.url);
-    return url.hostname.replace(/^www\./i, '').toLowerCase() || null;
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.url) return { url: null, hostname: null };
+    let hostname: string | null = null;
+    try {
+      hostname = new URL(tab.url).hostname.replace(/^www\./i, '').toLowerCase() || null;
+    } catch {
+      hostname = null;
+    }
+    return { url: tab.url, hostname };
   } catch {
-    return null;
+    return { url: null, hostname: null };
   }
 }
 
@@ -50,11 +58,70 @@ async function loadFeatures(): Promise<Feature[]> {
   return [];
 }
 
+async function loadSuggestions(hostname: string | null): Promise<Suggestion[]> {
+  // Suggestions come from Person C's GET_SUGGESTIONS handler. If that handler
+  // isn't wired yet, treat the response as empty and render nothing.
+  try {
+    const res = await chrome.runtime.sendMessage({
+      type: 'GET_SUGGESTIONS',
+      hostname: hostname ?? undefined,
+    });
+    if (Array.isArray(res)) return res as Suggestion[];
+    if (res && typeof res === 'object' && Array.isArray((res as { suggestions?: unknown }).suggestions)) {
+      return (res as { suggestions: Suggestion[] }).suggestions;
+    }
+  } catch {
+    // No handler yet — empty.
+  }
+  return [];
+}
+
 async function saveFeatures(features: Feature[]): Promise<void> {
   try {
     await chrome.storage.local.set({ features });
   } catch {
     // Outside extension context — best effort.
+  }
+}
+
+async function bulkSetEnabled(enabled: boolean): Promise<void> {
+  try {
+    const res = await chrome.runtime.sendMessage({ type: 'BULK_TOGGLE', enabled });
+    if (res && typeof res === 'object' && (res as { ok?: unknown }).ok) return;
+  } catch {
+    // Fall through to direct storage edit.
+  }
+  // Fallback: edit chrome.storage.local directly so the popup's behavior
+  // stays usable even before the background handler ships.
+  for (const f of state.features) f.enabled = enabled;
+  await saveFeatures(state.features);
+}
+
+async function bulkRemoveAll(): Promise<void> {
+  try {
+    const res = await chrome.runtime.sendMessage({ type: 'BULK_DELETE' });
+    if (res && typeof res === 'object' && (res as { ok?: unknown }).ok) return;
+  } catch {
+    // Fallthrough.
+  }
+  state.features = [];
+  await saveFeatures([]);
+}
+
+async function dismissSuggestion(id: string): Promise<void> {
+  try {
+    await chrome.runtime.sendMessage({ type: 'DISMISS_SUGGESTION', id });
+  } catch {
+    // No handler — at least update local state so the UI hides it.
+  }
+  state.suggestions = state.suggestions.filter((s) => s.id !== id);
+}
+
+async function acceptSuggestion(id: string): Promise<void> {
+  try {
+    await chrome.runtime.sendMessage({ type: 'ACCEPT_SUGGESTION', id });
+  } catch {
+    // No handler yet — silent.
   }
 }
 
@@ -165,6 +232,27 @@ function gearIcon(): SVGSVGElement {
   return svg;
 }
 
+function pencilIcon(): SVGSVGElement {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '1.8');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  svg.setAttribute('aria-hidden', 'true');
+  const path1 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path1.setAttribute('d', 'M12 20h9');
+  svg.appendChild(path1);
+  const path2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path2.setAttribute(
+    'd',
+    'M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z',
+  );
+  svg.appendChild(path2);
+  return svg;
+}
+
 function buildCard(f: Feature): HTMLElement {
   const cardState = cardStateFor(f);
   const card = el('article', {
@@ -172,12 +260,15 @@ function buildCard(f: Feature): HTMLElement {
     dataset: { id: f.id, state: cardState },
   });
 
+  const editMatches = !!state.activeUrl && patternMatchesUrl(f.urlPattern, state.activeUrl);
+
   // ---- info column ----
   const info = el('div', { className: 'card-info' }, [
     el('div', { className: 'feature-name', text: f.name || '(unnamed)' }),
     f.description
       ? el('div', { className: 'feature-desc', text: f.description })
       : null,
+    buildParentLine(f),
     el('code', { className: 'feature-url', text: f.urlPattern }),
     el('div', { className: 'status-row' }, [
       el('span', { className: 'dot' }),
@@ -187,7 +278,19 @@ function buildCard(f: Feature): HTMLElement {
   ]);
 
   // ---- actions column ----
+  const editBtn = el('button', {
+    className: 'icon-btn edit-btn' + (editMatches ? '' : ' edit-btn-disabled'),
+    attrs: {
+      type: 'button',
+      'aria-label': 'Edit feature',
+      title: editMatches ? 'Edit on this page' : 'Open a matching page first',
+    },
+    dataset: { action: 'edit' },
+  });
+  editBtn.appendChild(pencilIcon());
+
   const actions = el('div', { className: 'card-actions' }, [
+    editBtn,
     (() => {
       const t = el('button', {
         className: 'toggle' + (f.enabled ? ' on' : ''),
@@ -219,13 +322,20 @@ function buildCard(f: Feature): HTMLElement {
   return card;
 }
 
+function buildParentLine(f: Feature): HTMLElement | null {
+  if (!f.parentFeatureId) return null;
+  const parent = state.features.find((x) => x.id === f.parentFeatureId);
+  const text = parent
+    ? `Edited from “${parent.name}”`
+    : 'Edited from a previous version';
+  return el('div', { className: 'parent-line', text });
+}
+
 function buildMetaRow(f: Feature): HTMLElement | null {
   const bits: HTMLElement[] = [];
   if (f.lastRanAt) {
     bits.push(
-      el('span', {
-        text: 'Last ran ' + relativeTime(f.lastRanAt),
-      }),
+      el('span', { text: 'Last ran ' + relativeTime(f.lastRanAt) }),
     );
   }
   if ((f.runCount ?? 0) > 0) {
@@ -270,6 +380,46 @@ function buildErrorBlock(errorText: string): HTMLElement {
 }
 
 // ----------------------------------------------------------------------
+// Suggestions
+// ----------------------------------------------------------------------
+
+function buildSuggestionsSection(): HTMLElement | null {
+  if (state.suggestions.length === 0) return null;
+  const heading = el('h2', { className: 'section-heading', text: 'Suggested for you' });
+  const list = el('div', { className: 'suggestion-list' });
+  for (const s of state.suggestions) list.appendChild(buildSuggestionCard(s));
+  return el('section', { className: 'suggestions-section' }, [heading, list]);
+}
+
+function buildSuggestionCard(s: Suggestion): HTMLElement {
+  const card = el('article', {
+    className: 'suggestion-card',
+    dataset: { id: s.id },
+  });
+  const info = el('div', { className: 'suggestion-info' }, [
+    el('div', { className: 'suggestion-prompt', text: s.proposedPrompt }),
+    s.rationale ? el('div', { className: 'suggestion-rationale', text: s.rationale }) : null,
+  ]);
+  const actions = el('div', { className: 'suggestion-actions' }, [
+    el('button', {
+      className: 'btn-mini btn-mini-primary',
+      text: 'Try it',
+      attrs: { type: 'button' },
+      dataset: { action: 'try-suggestion' },
+    }),
+    el('button', {
+      className: 'btn-mini btn-mini-ghost',
+      text: '×',
+      attrs: { type: 'button', 'aria-label': 'Dismiss suggestion' },
+      dataset: { action: 'dismiss-suggestion' },
+    }),
+  ]);
+  card.appendChild(info);
+  card.appendChild(actions);
+  return card;
+}
+
+// ----------------------------------------------------------------------
 // Top-level rendering
 // ----------------------------------------------------------------------
 
@@ -296,10 +446,35 @@ function buildSection(
   return el('section', { className: 'features-section' }, [heading, list]);
 }
 
+function buildBulkActionsRow(): HTMLElement | null {
+  if (state.features.length === 0) return null;
+  const allEnabled = state.features.every((f) => f.enabled);
+  const allDisabled = state.features.every((f) => !f.enabled);
+  return el('div', { className: 'bulk-actions' }, [
+    el('button', {
+      className: 'bulk-btn',
+      text: 'All on',
+      attrs: { type: 'button', ...(allEnabled ? { disabled: '' } : {}) },
+      dataset: { action: 'bulk-enable' },
+    }),
+    el('button', {
+      className: 'bulk-btn',
+      text: 'All off',
+      attrs: { type: 'button', ...(allDisabled ? { disabled: '' } : {}) },
+      dataset: { action: 'bulk-disable' },
+    }),
+    el('button', {
+      className: 'bulk-btn bulk-btn-danger',
+      text: 'Delete all',
+      attrs: { type: 'button' },
+      dataset: { action: 'bulk-delete' },
+    }),
+  ]);
+}
+
 function render(): void {
   root.replaceChildren();
 
-  // Header (always present).
   const header = el('header', { className: 'popup-header' }, [
     el('h1', { text: 'BOB' }),
     (() => {
@@ -314,12 +489,14 @@ function render(): void {
   ]);
   root.appendChild(header);
 
-  // Body.
   const body = el('div', { className: 'popup-body' });
 
-  if (state.features.length === 0) {
+  if (state.features.length === 0 && state.suggestions.length === 0) {
     body.appendChild(buildEmptyState());
   } else {
+    const bulk = buildBulkActionsRow();
+    if (bulk) body.appendChild(bulk);
+
     let thisSite: Feature[] = [];
     let other: Feature[] = state.features;
     if (state.hostname) {
@@ -329,6 +506,10 @@ function render(): void {
     }
     const s1 = buildSection('Features for this site', state.hostname, thisSite);
     if (s1) body.appendChild(s1);
+
+    const sug = buildSuggestionsSection();
+    if (sug) body.appendChild(sug);
+
     const s2 = buildSection('All features', null, other);
     if (s2) body.appendChild(s2);
   }
@@ -361,14 +542,93 @@ async function toggle(id: string): Promise<void> {
   f.enabled = !f.enabled;
   await saveFeatures(state.features);
   render();
+
+  // Reload the active tab when our toggle would actually change what's
+  // rendered there. For ON: re-running picks up the new feature. For OFF:
+  // a reload clears any installed effects.
+  const result = await maybeReloadActiveTab(f);
+  if (result.reloaded) {
+    showToast('Reloading page…');
+  } else if (result.matched) {
+    showToast('Tab matched but reload failed');
+  } else {
+    showToast('Toggle takes effect on next page load');
+  }
 }
 
 async function remove(id: string): Promise<void> {
   const f = findFeature(id);
   if (!f) return;
   if (!confirm(`Delete "${f.name}"?`)) return;
+  const wasEnabledMatch = f.enabled;
   state.features = state.features.filter((x) => x.id !== id);
   await saveFeatures(state.features);
+  render();
+  if (wasEnabledMatch) {
+    const result = await maybeReloadActiveTab(f);
+    if (result.reloaded) showToast('Deleted · Reloading page…');
+    else showToast('Deleted');
+  } else {
+    showToast('Deleted');
+  }
+}
+
+async function handleEdit(id: string): Promise<void> {
+  const f = findFeature(id);
+  if (!f) return;
+  const result = await startEdit(f);
+  if (result.ok) {
+    // The popup must close so the overlay can take focus on the page.
+    window.close();
+    return;
+  }
+  if (result.reason === 'mismatch') {
+    showToast('Open a matching page first');
+  } else if (result.reason === 'no-tab') {
+    showToast('No active tab');
+  } else {
+    showToast('Could not open editor');
+  }
+}
+
+async function bulkEnable(): Promise<void> {
+  await bulkSetEnabled(true);
+  await refreshFromBackend();
+  render();
+  showToast('Enabled all features');
+}
+
+async function bulkDisable(): Promise<void> {
+  if (state.features.length === 0) return;
+  if (!confirm('Disable all features?')) return;
+  await bulkSetEnabled(false);
+  await refreshFromBackend();
+  render();
+  showToast('Disabled all features');
+}
+
+async function bulkDelete(): Promise<void> {
+  if (state.features.length === 0) return;
+  if (!confirm(`Delete all ${state.features.length} features? This cannot be undone.`)) return;
+  await bulkRemoveAll();
+  await refreshFromBackend();
+  render();
+  showToast('Deleted all features');
+}
+
+async function refreshFromBackend(): Promise<void> {
+  state.features = await loadFeatures();
+}
+
+async function trySuggestion(id: string): Promise<void> {
+  await acceptSuggestion(id);
+  // Person C's accept handler drives whatever happens next (e.g. opening
+  // overlay on the matching tab). From the popup's side we just close.
+  window.close();
+}
+
+async function dismissSuggestionAction(id: string): Promise<void> {
+  await dismissSuggestion(id);
   render();
 }
 
@@ -407,8 +667,6 @@ function showToast(text: string): void {
   if (!toastEl) return;
   toastEl.textContent = text;
   toastEl.removeAttribute('hidden');
-  // Force a reflow so the transition kicks in even when class is toggled
-  // immediately after un-hiding.
   void toastEl.offsetWidth;
   toastEl.classList.add('show');
   if (toastTimer) clearTimeout(toastTimer);
@@ -428,11 +686,36 @@ root.addEventListener('click', (e) => {
   const target = e.target as HTMLElement;
   const btn = target.closest('button[data-action]') as HTMLButtonElement | null;
   if (!btn) return;
+  if (btn.disabled) return;
   const action = btn.dataset.action;
-  if (action === 'open-options') {
-    openOptions();
+
+  // Top-level actions (no card scope).
+  switch (action) {
+    case 'open-options':
+      openOptions();
+      return;
+    case 'bulk-enable':
+      void bulkEnable();
+      return;
+    case 'bulk-disable':
+      void bulkDisable();
+      return;
+    case 'bulk-delete':
+      void bulkDelete();
+      return;
+  }
+
+  // Suggestion-scoped actions.
+  const sCard = btn.closest('.suggestion-card') as HTMLElement | null;
+  if (sCard) {
+    const sId = sCard.dataset.id;
+    if (!sId) return;
+    if (action === 'try-suggestion') void trySuggestion(sId);
+    else if (action === 'dismiss-suggestion') void dismissSuggestionAction(sId);
     return;
   }
+
+  // Feature-scoped actions.
   const card = btn.closest('.feature-card') as HTMLElement | null;
   const id = card?.dataset.id;
   if (!card || !id) return;
@@ -442,6 +725,9 @@ root.addEventListener('click', (e) => {
       break;
     case 'delete':
       void remove(id);
+      break;
+    case 'edit':
+      void handleEdit(id);
       break;
     case 'toggle-error':
       toggleErrorDetail(card);
@@ -467,12 +753,16 @@ function showLoading(): void {
 
 async function boot(): Promise<void> {
   showLoading();
-  const [features, hostname] = await Promise.all([
+  const tabInfo = await getActiveTabInfo();
+  state.activeUrl = tabInfo.url;
+  state.hostname = tabInfo.hostname;
+  // Features and suggestions in parallel — neither blocks the other.
+  const [features, suggestions] = await Promise.all([
     loadFeatures(),
-    getActiveHostname(),
+    loadSuggestions(tabInfo.hostname),
   ]);
   state.features = features;
-  state.hostname = hostname;
+  state.suggestions = suggestions;
   render();
 }
 

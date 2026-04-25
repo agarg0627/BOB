@@ -5,10 +5,13 @@ export interface PreviewElements {
   nameInput: HTMLInputElement;
   descEl: HTMLParagraphElement;
   urlInput: HTMLInputElement;
+  codeWrap: HTMLDivElement;
   codePre: HTMLPreElement;
+  codeToggleBtn: HTMLButtonElement;
   status: HTMLDivElement;
   cancelBtn: HTMLButtonElement;
   installBtn: HTMLButtonElement;
+  installLabel: HTMLSpanElement;
 }
 
 export function buildPreviewView(): PreviewElements {
@@ -45,11 +48,23 @@ export function buildPreviewView(): PreviewElements {
   meta.appendChild(urlLabel);
   meta.appendChild(urlInput);
 
+  const codeToggleBtn = document.createElement('button');
+  codeToggleBtn.type = 'button';
+  codeToggleBtn.className = 'preview-code-toggle';
+  codeToggleBtn.setAttribute('aria-expanded', 'false');
+  codeToggleBtn.textContent = 'Show code ▾';
+
   const codeWrap = document.createElement('div');
-  codeWrap.className = 'preview-code-wrap';
+  codeWrap.className = 'preview-code-wrap collapsed';
   const codePre = document.createElement('pre');
   codePre.className = 'preview-code';
   codeWrap.appendChild(codePre);
+
+  codeToggleBtn.addEventListener('click', () => {
+    const collapsed = codeWrap.classList.toggle('collapsed');
+    codeToggleBtn.textContent = collapsed ? 'Show code ▾' : 'Hide code ▴';
+    codeToggleBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  });
 
   const status = document.createElement('div');
   status.className = 'preview-status';
@@ -91,11 +106,24 @@ export function buildPreviewView(): PreviewElements {
 
   root.appendChild(header);
   root.appendChild(meta);
+  root.appendChild(codeToggleBtn);
   root.appendChild(codeWrap);
   root.appendChild(status);
   root.appendChild(actions);
 
-  return { root, nameInput, descEl, urlInput, codePre, status, cancelBtn, installBtn };
+  return {
+    root,
+    nameInput,
+    descEl,
+    urlInput,
+    codeWrap,
+    codePre,
+    codeToggleBtn,
+    status,
+    cancelBtn,
+    installBtn,
+    installLabel,
+  };
 }
 
 export function populatePreview(els: PreviewElements, response: GenerateResponse): void {
@@ -105,6 +133,10 @@ export function populatePreview(els: PreviewElements, response: GenerateResponse
   renderCode(els.codePre, response.code);
   els.status.textContent = '';
   els.status.classList.remove('visible');
+  // Reset to collapsed each time a new response is shown.
+  els.codeWrap.classList.add('collapsed');
+  els.codeToggleBtn.textContent = 'Show code ▾';
+  els.codeToggleBtn.setAttribute('aria-expanded', 'false');
 }
 
 function renderCode(pre: HTMLPreElement, code: string): void {

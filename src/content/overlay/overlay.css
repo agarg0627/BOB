@@ -141,6 +141,84 @@
   display: block;
 }
 
+/* === Edit mode banner === */
+.edit-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(96, 165, 250, 0.1);
+  border: 1px solid rgba(96, 165, 250, 0.25);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: rgba(245, 245, 245, 0.85);
+}
+
+.edit-banner[hidden] {
+  display: none;
+}
+
+.edit-banner-label {
+  color: rgba(245, 245, 245, 0.55);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.edit-banner-name {
+  font-weight: 600;
+  color: #f5f5f5;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.edit-banner-close {
+  flex: 0 0 auto;
+  background: transparent;
+  border: 0;
+  color: rgba(245, 245, 245, 0.5);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.edit-banner-close:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #f5f5f5;
+}
+
+/* === Prompt action button (Generate / Stop) === */
+.prompt-action {
+  flex: 0 0 auto;
+  font-size: 12.5px;
+  padding: 6px 12px;
+}
+
+.backdrop[data-state="preview"] .prompt-action,
+.backdrop[data-state="installing"] .prompt-action {
+  display: none;
+}
+
+.prompt-action.stop {
+  background: #d9504a;
+  border-color: #d9504a;
+}
+
+.prompt-action.stop:hover:not(:disabled) {
+  background: #c14640;
+  border-color: #c14640;
+}
+
 .status {
   font-size: 12px;
   color: #ff8a8a;
@@ -235,12 +313,32 @@ kbd {
   border-color: rgba(96, 165, 250, 0.4);
 }
 
+.preview-code-toggle {
+  align-self: flex-start;
+  background: transparent;
+  border: 0;
+  color: rgba(96, 165, 250, 0.85);
+  font: inherit;
+  font-size: 11.5px;
+  padding: 0;
+  cursor: pointer;
+}
+
+.preview-code-toggle:hover {
+  color: #8bb6fb;
+}
+
 .preview-code-wrap {
-  max-height: 300px;
+  max-height: 280px;
+  overflow-x: hidden;
   overflow-y: auto;
   background: #0d0d0d;
   border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 8px;
+}
+
+.preview-code-wrap.collapsed {
+  display: none;
 }
 
 .preview-code {
@@ -250,7 +348,8 @@ kbd {
   font-size: 12.5px;
   line-height: 1.5;
   color: #e5e5e5;
-  white-space: pre;
+  white-space: pre-wrap;
+  word-break: break-word;
   tab-size: 2;
 }
 
@@ -347,6 +446,22 @@ kbd {
   display: none;
 }
 
-.backdrop[data-state="installing"] .btn-primary .spinner-sm {
+.backdrop[data-state="installing"] .btn-primary:not(.installed) .spinner-sm {
   display: inline-block;
+}
+
+/* Transient post-install state (~800ms) */
+.btn-primary.installed {
+  background: #2ea043;
+  border-color: #2ea043;
+  cursor: default;
+}
+
+.btn-primary.installed:hover {
+  background: #2ea043;
+  border-color: #2ea043;
+}
+
+.btn-primary.installed .spinner-sm {
+  display: none;
 }

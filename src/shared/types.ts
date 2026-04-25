@@ -82,7 +82,7 @@ export interface GenerateResponse {
 }
 
 export type Message =
-| { type: 'GENERATE_FEATURE'
+  | { type: 'GENERATE_FEATURE'; req: GenerateRequest }
   | { type: 'TOOL_QUERY_DOM'; selector: string; tabId: number }
   | { type: 'TOOL_TEST_CODE'; code: string; tabId: number }
   | { type: 'TRACK_BEHAVIOR'; event: UserBehaviorEvent }
@@ -91,7 +91,7 @@ export type Message =
   | { type: 'ACCEPT_SUGGESTION'; id: string }
   | { type: 'BULK_TOGGLE'; enabled: boolean }
   | { type: 'BULK_DELETE' }
-  | { type: 'OPEN_OVERLAY_FOR_EDIT'; featureId: string }; req: GenerateRequest }
+  | { type: 'OPEN_OVERLAY_FOR_EDIT'; featureId: string }
   | { type: 'INSTALL_FEATURE'; feature: Omit<Feature, 'id' | 'createdAt'> }
   | { type: 'GET_FEATURES_FOR_URL'; url: string }
   | { type: 'LIST_FEATURES' }
