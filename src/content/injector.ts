@@ -27,6 +27,15 @@ export async function runAllForUrl(
   let ran = 0;
   for (const f of features) {
     const r = await runFeature(f);
+    // Record result for popup status display
+    try {
+      await send({
+        type: 'RECORD_FEATURE_RESULT',
+        id: f.id,
+        ok: r.ok,
+        error: r.error,
+      });
+    } catch { /* recording failure shouldn't break feature run */ }
     if (r.ok) ran++;
     else errors.push(`${f.name}: ${r.error}`);
   }

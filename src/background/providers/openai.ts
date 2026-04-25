@@ -22,7 +22,24 @@ export const openaiProvider: Provider = {
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: buildUserPrompt(req) },
         ],
-        response_format: { type: 'json_object' },
+        response_format: {
+          type: 'json_schema',
+          json_schema: {
+            name: 'feature_response',
+            strict: true,
+            schema: {
+              type: 'object',
+              properties: {
+                code: { type: 'string' },
+                name: { type: 'string' },
+                description: { type: 'string' },
+                urlPattern: { type: 'string' },
+              },
+              required: ['code', 'name', 'description', 'urlPattern'],
+              additionalProperties: false,
+            },
+          },
+        },
       }),
     });
 
@@ -38,6 +55,6 @@ export const openaiProvider: Provider = {
     if (typeof content !== 'string') {
       throw new Error(`${NAME}: no message content in response`);
     }
-    return parseAndValidate(NAME, content);
+    return parseAndValidate(NAME, content, req);
   },
 };

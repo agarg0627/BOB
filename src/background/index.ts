@@ -1,6 +1,7 @@
-// Owned by Person A.
 import { Storage } from '../shared/storage';
 import { generateFeature } from './llm';
+import { getSettings, setSettings } from './settings';
+import { recordResult } from './error-recorder';
 import type { Message } from '../shared/types';
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -26,6 +27,26 @@ chrome.runtime.onMessage.addListener(
             sendResponse(feature);
             break;
           }
+          case 'GET_FEATURES_FOR_URL': {
+            const arr = await Storage.matching(msg.url);
+            sendResponse(arr);
+            break;
+          }
+          case 'LIST_FEATURES': {
+            const arr = await Storage.list();
+            sendResponse(arr);
+            break;
+          }
+          case 'DELETE_FEATURE': {
+            await Storage.remove(msg.id);
+            sendResponse({ ok: true });
+            break;
+          }
+          case 'TOGGLE_FEATURE': {
+            await Storage.update(msg.id, { enabled: msg.enabled });
+            sendResponse({ ok: true });
+            break;
+          }
           case 'RUN_FEATURE': {
             const tabId = sender.tab?.id;
             if (tabId === undefined) {
@@ -38,6 +59,8 @@ chrome.runtime.onMessage.addListener(
                 world: 'MAIN',
                 func: (code: string) => {
                   try {
+                    // Clear any previous run's error
+                    (window as any).__bobLastError = undefined;
                     // @ts-ignore — trustedTypes isn't in default lib types
                     const tt = (window as any).trustedTypes;
                     let scriptValue: any = code;
@@ -56,6 +79,12 @@ chrome.runtime.onMessage.addListener(
                     script.textContent = scriptValue;
                     (document.head || document.documentElement).appendChild(script);
                     script.remove();
+                    // Check if the injected IIFE caught an error
+                    const lastError = (window as any).__bobLastError;
+                    if (lastError) {
+                      (window as any).__bobLastError = undefined;
+                      return { ok: false, error: lastError };
+                    }
                     return { ok: true };
                   } catch (e) {
                     return { ok: false, error: String(e) };
@@ -69,23 +98,18 @@ chrome.runtime.onMessage.addListener(
             }
             break;
           }
-          case 'GET_FEATURES_FOR_URL': {
-            const arr = await Storage.matching(msg.url);
-            sendResponse(arr);
+          case 'GET_SETTINGS': {
+            const settings = await getSettings();
+            sendResponse(settings);
             break;
           }
-          case 'LIST_FEATURES': {
-            const arr = await Storage.list();
-            sendResponse(arr);
+          case 'SET_SETTINGS': {
+            const updated = await setSettings(msg.settings);
+            sendResponse(updated);
             break;
           }
-          case 'DELETE_FEATURE': {
-            await Storage.remove(msg.id);
-            sendResponse({ ok: true });
-            break;
-          }
-          case 'TOGGLE_FEATURE': {
-            await Storage.update(msg.id, { enabled: msg.enabled });
+          case 'RECORD_FEATURE_RESULT': {
+            await recordResult(msg.id, msg.ok, msg.error);
             sendResponse({ ok: true });
             break;
           }

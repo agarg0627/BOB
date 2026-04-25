@@ -26,6 +26,9 @@ export async function setSettings(
     apiKeys: { ...current.apiKeys, ...(patch.apiKeys ?? {}) },
     model: 'model' in patch ? patch.model : current.model,
   };
+  for (const key of Object.keys(next.apiKeys) as Array<keyof typeof next.apiKeys>) {
+    if (!next.apiKeys[key]) delete next.apiKeys[key];
+  }
   await chrome.storage.local.set({ [KEY]: next });
   return next;
 }

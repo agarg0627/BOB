@@ -40,6 +40,6 @@ export const googleProvider: Provider = {
     if (typeof text !== 'string') {
       throw new Error(`${NAME}: no text part in response`);
     }
-    return parseAndValidate(NAME, text);
+    return parseAndValidate(NAME, text, req);
   },
 };

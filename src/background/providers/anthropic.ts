@@ -36,6 +36,6 @@ export const anthropicProvider: Provider = {
     if (!block || typeof block.text !== 'string') {
       throw new Error(`${NAME}: no text block in response`);
     }
-    return parseAndValidate(NAME, block.text);
+    return parseAndValidate(NAME, block.text, req);
   },
 };

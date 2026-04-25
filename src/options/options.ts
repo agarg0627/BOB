@@ -123,8 +123,7 @@ async function handleSubmit(event: SubmitEvent): Promise<void> {
   const provider = selectedProvider();
   const apiKeys: Partial<Record<LLMProvider, string>> = {};
   (Object.keys(keyInputs) as LLMProvider[]).forEach((p) => {
-    const value = keyInputs[p].value.trim();
-    if (value) apiKeys[p] = value;
+    apiKeys[p] = keyInputs[p].value.trim();
   });
 
   const modelValue = modelInput.value.trim();

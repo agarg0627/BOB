@@ -4,14 +4,14 @@ export const SYSTEM_PROMPT = `You are an expert at writing JavaScript content sc
 
 Output a single JSON object with no markdown, no commentary, no surrounding prose:
 {
-  "code": "(function(){ try { /* logic */ } catch(e){ console.error('[bob]', e); } })();",
+  "code": "(function(){ try { /* logic */ } catch(e){ console.error('[bob]', e); window.__bobLastError = String(e); } })();",
   "name": "<3-5 word title>",
   "description": "<one sentence>",
   "urlPattern": "<glob like *://*.youtube.com/*>"
 }
 
 Rules:
-- Wrap all logic in the IIFE + try/catch shown above.
+- Wrap all logic in the IIFE + try/catch shown above. The catch block must set window.__bobLastError = String(e) so the extension can detect runtime failures.
 - Be idempotent: re-running the snippet must not duplicate effects. Tag any element you inject with data-bob="<feature-name-slug>" and check for its existence before re-creating.
 - Prefer stable selectors: aria-label, role, data-testid, semantic tags. Avoid auto-generated class names like "css-1a2b3c".
 - For dynamically rendered pages, use MutationObserver to reapply changes when new nodes appear.
@@ -33,9 +33,7 @@ export function buildUserPrompt(req: GenerateRequest): string {
   return parts.join('\n\n');
 }
 
-const REQUIRED_FIELDS = ['code', 'name', 'description', 'urlPattern'] as const;
-
-export function parseAndValidate(providerName: string, rawText: string): GenerateResponse {
+export function parseAndValidate(providerName: string, rawText: string, req: GenerateRequest): GenerateResponse {
   const cleaned = stripFences(rawText).trim();
   let parsed: unknown;
   try {
@@ -49,16 +47,17 @@ export function parseAndValidate(providerName: string, rawText: string): Generat
     throw new Error(`${providerName}: response JSON was not an object`);
   }
   const obj = parsed as Record<string, unknown>;
-  for (const field of REQUIRED_FIELDS) {
-    if (typeof obj[field] !== 'string' || (obj[field] as string).length === 0) {
-      throw new Error(`${providerName}: response missing field "${field}"`);
-    }
+  if (typeof obj.code !== 'string' || obj.code.length === 0) {
+    throw new Error(`${providerName}: response missing field "code"`);
   }
+  const hostname = (() => {
+    try { return new URL(req.url).hostname; } catch { return '*'; }
+  })();
   return {
-    code: obj.code as string,
-    name: obj.name as string,
-    description: obj.description as string,
-    urlPattern: obj.urlPattern as string,
+    code: obj.code,
+    name: typeof obj.name === 'string' && obj.name.length > 0 ? obj.name : 'Untitled feature',
+    description: typeof obj.description === 'string' && obj.description.length > 0 ? obj.description : 'Custom customization',
+    urlPattern: typeof obj.urlPattern === 'string' && obj.urlPattern.length > 0 ? obj.urlPattern : `*://${hostname}/*`,
   };
 }
 
