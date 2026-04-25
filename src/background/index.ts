@@ -2,6 +2,12 @@ import { Storage } from '../shared/storage';
 import { generateFeature } from './llm';
 import { getSettings, setSettings } from './settings';
 import { recordResult } from './error-recorder';
+import {
+  recordEvent,
+  getSuggestions,
+  dismissSuggestion,
+  acceptSuggestion,
+} from './suggestions-engine';
 import type { Message } from '../shared/types';
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -18,7 +24,9 @@ chrome.runtime.onMessage.addListener(
       try {
         switch (msg.type) {
           case 'GENERATE_FEATURE': {
-            const result = await generateFeature(msg.req);
+            const tabId = sender.tab?.id;
+            const req = { ...msg.req, tabId };
+            const result = await generateFeature(req);
             sendResponse(result);
             break;
           }
@@ -111,6 +119,38 @@ chrome.runtime.onMessage.addListener(
           case 'RECORD_FEATURE_RESULT': {
             await recordResult(msg.id, msg.ok, msg.error);
             sendResponse({ ok: true });
+            break;
+          }
+          case 'TRACK_BEHAVIOR': {
+            await recordEvent(msg.event);
+            sendResponse({ ok: true });
+            break;
+          }
+          case 'GET_SUGGESTIONS': {
+            const list = await getSuggestions(msg.hostname);
+            sendResponse(list);
+            break;
+          }
+          case 'DISMISS_SUGGESTION': {
+            await dismissSuggestion(msg.id);
+            sendResponse({ ok: true });
+            break;
+          }
+          case 'ACCEPT_SUGGESTION': {
+            const result = await acceptSuggestion(msg.id);
+            sendResponse(result);
+            break;
+          }
+          case 'BULK_TOGGLE': {
+            const all = await Storage.list();
+            for (const f of all) await Storage.update(f.id, { enabled: msg.enabled });
+            sendResponse({ ok: true, count: all.length });
+            break;
+          }
+          case 'BULK_DELETE': {
+            const all = await Storage.list();
+            for (const f of all) await Storage.remove(f.id);
+            sendResponse({ ok: true, count: all.length });
             break;
           }
         }
