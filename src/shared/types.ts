@@ -1,9 +1,12 @@
 export type LLMProvider = 'anthropic' | 'openai' | 'google';
 
+export type EffortMode = 'standard' | 'high';
+
 export interface ExtensionSettings {
   provider: LLMProvider;
   apiKeys: Partial<Record<LLMProvider, string>>;
   model?: string;
+  effortMode?: EffortMode;
 }
 
 export interface ToolCall {
@@ -43,6 +46,8 @@ export interface Suggestion {
   evidenceCount: number;
   createdAt: number;
   dismissed?: boolean;
+  dismissalState?: 'none' | 'later' | 'never';
+  laterUntil?: number;
 }
 
 
@@ -72,6 +77,8 @@ export interface GenerateRequest {
   existingFeatureName?: string;
   previousError?: string;
   tabId?: number;
+  effortMode?: EffortMode;
+  refinementHistory?: { role: 'user' | 'assistant'; content: string }[];
 }
 
 export interface GenerateResponse {
@@ -82,7 +89,11 @@ export interface GenerateResponse {
 }
 
 export type Message =
-  | { type: 'GENERATE_FEATURE'; req: GenerateRequest }
+| { type: 'GENERATE_FEATURE'
+  | { type: 'GET_SUGGESTIONS_VISIBLE'; hostname?: string }
+  | { type: 'SET_SUGGESTION_STATE'; id: string; state: 'none' | 'later' | 'never' }
+  | { type: 'EXPORT_FEATURES' }
+  | { type: 'IMPORT_FEATURES'; json: string; mode: 'merge' | 'replace' }; req: GenerateRequest }
   | { type: 'TOOL_QUERY_DOM'; selector: string; tabId: number }
   | { type: 'TOOL_TEST_CODE'; code: string; tabId: number }
   | { type: 'TRACK_BEHAVIOR'; event: UserBehaviorEvent }

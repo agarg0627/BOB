@@ -73,7 +73,7 @@ function toToolDefinitions(
 
 export const anthropicProvider: Provider = {
   name: NAME,
-  defaultModel: 'claude-sonnet-4-5',
+  defaultModel: 'claude-sonnet-4-6',
 
   async chat(args): Promise<ProviderTurnResponse> {
     const { messages, system, tools, apiKey, model } = args;

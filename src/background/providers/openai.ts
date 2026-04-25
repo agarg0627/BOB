@@ -71,7 +71,7 @@ function toToolDefinitions(
 
 export const openaiProvider: Provider = {
   name: NAME,
-  defaultModel: 'gpt-4o-mini',
+  defaultModel: 'gpt-5.5',
 
   async chat(args): Promise<ProviderTurnResponse> {
     const { messages, system, tools, apiKey, model } = args;

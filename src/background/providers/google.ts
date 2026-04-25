@@ -87,7 +87,7 @@ function toToolDeclarations(
 
 export const googleProvider: Provider = {
   name: NAME,
-  defaultModel: 'gemini-2.0-flash',
+  defaultModel: 'gemini-3.1-pro-preview',
 
   async chat(args): Promise<ProviderTurnResponse> {
     const { messages, system, tools, apiKey, model } = args;

@@ -5,6 +5,7 @@ const KEY = 'settings';
 export const DEFAULT_SETTINGS: ExtensionSettings = {
   provider: 'anthropic',
   apiKeys: {},
+  effortMode: 'standard',
 };
 
 export async function getSettings(): Promise<ExtensionSettings> {

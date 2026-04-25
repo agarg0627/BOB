@@ -67,16 +67,20 @@ npm run typecheck  # tsc --noEmit
         storage.ts          chrome.storage CRUD for features + settings
         messages.ts         Message-passing helper
 
-## File ownership (Phase 3)
+## File ownership (Phase 4)
 
-| Person | Files |
+| Pair | Files |
 |---|---|
-| A | `src/background/agent.ts`, `src/background/tools.ts`, `src/background/providers/*` (extend for tool use), `src/background/providers/prompt.ts` (rewrite), `src/background/llm.ts` (extend) |
-| B | `src/content/spa.ts`, `src/content/observer-helper.ts`, `src/content/lifecycle.ts` |
-| C | `src/background/suggestions-engine.ts`, `src/content/behavior-tracker.ts`, `src/popup/suggestions-section.ts`, `src/popup/suggestions-section.css` |
-| D | `src/content/overlay/*` (extend), `src/popup/popup.ts` and `popup.css` (extend), `src/popup/iteration.ts` |
+| 1 (Frontend) | `src/content/overlay/*` (extend), `src/popup/popup.ts` and `popup.css` (extend), `src/popup/suggestions-section.ts` (extend), `src/options/options.ts` (extend), `src/content/page-badge.ts`, `src/content/voice-input.ts`, `src/popup/import-export.ts` |
+| 2 (Backend) | `src/background/providers/prompt.ts` (rewrite), `src/background/providers/{anthropic,openai,google}.ts` (extend for high-effort), `src/background/agent.ts` (extend for refinement + effort), `src/background/suggestions-engine.ts` (three-state dismissal, dedup), `src/background/settings.ts` (effort mode) |
 
-Untouchable during Phase 3 dev: `src/background/index.ts`, `src/content/index.ts`, `src/content/injector.ts`. Modified at integration only.
+Untouchable during Phase 4 dev: `src/background/index.ts`, `src/content/index.ts`, `src/content/injector.ts`, `src/shared/types.ts`, `src/shared/storage.ts`. Modified at integration only.
+
+## Model defaults (Phase 4)
+
+- Anthropic: `claude-sonnet-4-6`
+- OpenAI: `gpt-5.5`
+- Google: `gemini-3.1-pro-preview`
 
 ## API key sources
 
