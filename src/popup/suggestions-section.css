@@ -1,0 +1,182 @@
+/* Suggestions feed styles. Class names are namespaced with `bob-suggestion-`
+   to avoid colliding with Person D's popup.css selectors when this module
+   is imported into the popup. */
+
+.bob-suggestion-section {
+  padding: 8px 0 0;
+}
+
+.bob-suggestion-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 12px;
+}
+
+.bob-suggestion-card {
+  background: #ffffff;
+  border: 1px solid rgba(10, 132, 255, 0.25);
+  border-left: 3px solid #007aff;
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: #1d1d1f;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.bob-suggestion-tag {
+  align-self: flex-start;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: #007aff;
+  background: rgba(0, 122, 255, 0.08);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.bob-suggestion-rationale {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: #1d1d1f;
+  line-height: 1.4;
+}
+
+.bob-suggestion-prompt {
+  font-size: 11.5px;
+  font-style: italic;
+  color: #6e6e73;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.bob-suggestion-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.bob-suggestion-btn {
+  font: inherit;
+  font-size: 11.5px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.bob-suggestion-btn-primary {
+  background: #007aff;
+  color: #ffffff;
+  border-color: #007aff;
+}
+
+.bob-suggestion-btn-primary:hover {
+  background: #0066d6;
+  border-color: #0066d6;
+}
+
+.bob-suggestion-btn-ghost {
+  background: transparent;
+  color: #6e6e73;
+  border-color: #d1d1d6;
+}
+
+.bob-suggestion-btn-ghost:hover {
+  background: #f5f5f7;
+  color: #1d1d1f;
+  border-color: #aeaeb2;
+}
+
+.bob-suggestion-empty {
+  margin: 6px 12px;
+  padding: 14px 14px;
+  border: 1px dashed #d1d1d6;
+  border-radius: 8px;
+  text-align: center;
+  color: #86868b;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  line-height: 1.5;
+}
+
+.bob-suggestion-empty p {
+  margin: 0;
+  font-size: 12px;
+}
+
+.bob-suggestion-empty p:first-child {
+  font-weight: 500;
+  color: #6e6e73;
+  margin-bottom: 4px;
+}
+
+.bob-suggestion-heading {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #86868b;
+  padding: 8px 16px 6px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .bob-suggestion-card {
+    background: #2c2c2e;
+    border-color: rgba(10, 132, 255, 0.4);
+    border-left-color: #0a84ff;
+    color: #f5f5f7;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  }
+
+  .bob-suggestion-tag {
+    color: #0a84ff;
+    background: rgba(10, 132, 255, 0.18);
+  }
+
+  .bob-suggestion-rationale {
+    color: #f5f5f7;
+  }
+
+  .bob-suggestion-prompt {
+    color: #c7c7cc;
+  }
+
+  .bob-suggestion-btn-primary {
+    background: #0a84ff;
+    border-color: #0a84ff;
+  }
+
+  .bob-suggestion-btn-primary:hover {
+    background: #0070e0;
+    border-color: #0070e0;
+  }
+
+  .bob-suggestion-btn-ghost {
+    color: #c7c7cc;
+    border-color: #48484a;
+  }
+
+  .bob-suggestion-btn-ghost:hover {
+    background: #3a3a3c;
+    color: #f5f5f7;
+    border-color: #636366;
+  }
+
+  .bob-suggestion-empty {
+    border-color: #48484a;
+    color: #8e8e93;
+  }
+
+  .bob-suggestion-empty p:first-child {
+    color: #c7c7cc;
+  }
+
+  .bob-suggestion-heading {
+    color: #8e8e93;
+  }
+}
