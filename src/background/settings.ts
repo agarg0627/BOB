@@ -5,6 +5,7 @@ const KEY = 'settings';
 export const DEFAULT_SETTINGS: ExtensionSettings = {
   provider: 'anthropic',
   apiKeys: {},
+  effortMode: 'standard',
 };
 
 export async function getSettings(): Promise<ExtensionSettings> {
@@ -14,6 +15,7 @@ export async function getSettings(): Promise<ExtensionSettings> {
     provider: stored.provider ?? DEFAULT_SETTINGS.provider,
     apiKeys: { ...DEFAULT_SETTINGS.apiKeys, ...(stored.apiKeys ?? {}) },
     model: stored.model,
+    effortMode: stored.effortMode ?? DEFAULT_SETTINGS.effortMode,
   };
 }
 
@@ -25,6 +27,9 @@ export async function setSettings(
     provider: patch.provider ?? current.provider,
     apiKeys: { ...current.apiKeys, ...(patch.apiKeys ?? {}) },
     model: 'model' in patch ? patch.model : current.model,
+    // Mirror the `'model' in patch` pattern so callers can explicitly
+    // clear effortMode back to the default by passing `undefined`.
+    effortMode: 'effortMode' in patch ? patch.effortMode : current.effortMode,
   };
   for (const key of Object.keys(next.apiKeys) as Array<keyof typeof next.apiKeys>) {
     if (!next.apiKeys[key]) delete next.apiKeys[key];

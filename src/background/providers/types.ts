@@ -1,4 +1,4 @@
-import type { ToolCall } from '../../shared/types';
+import type { EffortMode, ToolCall } from '../../shared/types';
 
 export interface ProviderMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
@@ -31,5 +31,10 @@ export interface Provider {
     tools: ToolDefinition[];
     apiKey: string;
     model?: string;
+    // 'high' enables provider-side extended-reasoning features
+    // (Anthropic thinking, OpenAI reasoning_effort, Gemini thinkingConfig).
+    // Providers that don't support the feature for a given model must
+    // silently drop the param.
+    effortMode?: EffortMode;
   }): Promise<ProviderTurnResponse>;
 }

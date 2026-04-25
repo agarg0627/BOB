@@ -74,12 +74,19 @@ export const openaiProvider: Provider = {
   defaultModel: 'gpt-4o-mini',
 
   async chat(args): Promise<ProviderTurnResponse> {
-    const { messages, system, tools, apiKey, model } = args;
+    const { messages, system, tools, apiKey, model, effortMode } = args;
 
+    const chosenModel = model || openaiProvider.defaultModel;
     const body: Record<string, unknown> = {
-      model: model || openaiProvider.defaultModel,
+      model: chosenModel,
       messages: toOpenAIMessages(messages, system),
     };
+    // reasoning_effort is currently honoured by gpt-5.x reasoning models.
+    // Older / non-reasoning models reject the param, so we silently drop
+    // it when the chosen model isn't gpt-5*.
+    if (effortMode === 'high' && /^gpt-5/i.test(chosenModel)) {
+      body.reasoning_effort = 'high';
+    }
     if (tools.length > 0) {
       body.tools = toToolDefinitions(tools);
     }

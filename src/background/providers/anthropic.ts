@@ -5,7 +5,10 @@ const ENDPOINT = 'https://api.anthropic.com/v1/messages';
 const NAME = 'Anthropic';
 
 interface AnthropicContentBlock {
-  type: 'text' | 'tool_use';
+  // 'thinking' blocks appear when extended thinking is enabled. We do
+  // not surface the chain-of-thought to the user or to the next
+  // message turn — they're only for the model's own reasoning.
+  type: 'text' | 'tool_use' | 'thinking' | string;
   text?: string;
   id?: string;
   name?: string;
@@ -76,14 +79,21 @@ export const anthropicProvider: Provider = {
   defaultModel: 'claude-sonnet-4-5',
 
   async chat(args): Promise<ProviderTurnResponse> {
-    const { messages, system, tools, apiKey, model } = args;
+    const { messages, system, tools, apiKey, model, effortMode } = args;
 
+    const high = effortMode === 'high';
     const body: Record<string, unknown> = {
       model: model || anthropicProvider.defaultModel,
-      max_tokens: 4096,
+      // High effort raises the output ceiling because extended-thinking
+      // turns can spend several thousand tokens on the reasoning block
+      // before producing the visible answer.
+      max_tokens: high ? 8192 : 4096,
       system,
       messages: toAnthropicMessages(messages),
     };
+    if (high) {
+      body.thinking = { type: 'enabled', budget_tokens: 8000 };
+    }
     if (tools.length > 0) {
       body.tools = toToolDefinitions(tools);
     }
