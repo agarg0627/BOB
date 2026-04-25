@@ -1,0 +1,12 @@
+node_modules
+dist
+.DS_Store
+.env
+.env.local
+*.log
+.vite
+.cache
+
+# Local dev sandboxes (keep out of merges)
+dev/*-sandbox.html
+dev/*.local.ts

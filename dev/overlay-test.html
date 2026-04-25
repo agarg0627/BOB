@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>BOB — overlay sandbox</title>
+</head>
+<body>
+  <h1>Overlay Sandbox</h1>
+  <p>Press Cmd+K (or Ctrl+K) to open the overlay.</p>
+  <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>
+  <script type="module">
+    import { initOverlay } from '../src/content/overlay/overlay.ts';
+    initOverlay({
+      onSubmit: async (prompt) => {
+        await new Promise((r) => setTimeout(r, 800));
+        console.log('submitted:', prompt);
+      },
+    });
+  </script>
+</body>
+</html>

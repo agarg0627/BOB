@@ -1,0 +1,18 @@
+{
+  "name": "bob",
+  "version": "0.0.1",
+  "private": true,
+  "description": "BOB — a self-customizing browser extension powered by an AI agent",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@crxjs/vite-plugin": "^2.0.0-beta.25",
+    "@types/chrome": "^0.0.270",
+    "typescript": "^5.5.0",
+    "vite": "^5.4.0"
+  }
+}
