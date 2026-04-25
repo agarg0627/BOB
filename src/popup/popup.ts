@@ -2,6 +2,7 @@
 // + suggestions + status surface.
 import type { Feature, Suggestion } from '../shared/types';
 import { startEdit, maybeReloadActiveTab, patternMatchesUrl } from './iteration';
+import { exportFeatures, importFeatures } from './import-export';
 
 const root = document.getElementById('root')!;
 const toastEl = document.getElementById('toast') as HTMLDivElement | null;
@@ -431,10 +432,16 @@ function buildSuggestionCard(s: Suggestion): HTMLElement {
       dataset: { action: 'try-suggestion' },
     }),
     el('button', {
-      className: 'btn-mini btn-mini-ghost',
-      text: '×',
-      attrs: { type: 'button', 'aria-label': 'Dismiss suggestion' },
-      dataset: { action: 'dismiss-suggestion' },
+      className: 'btn-mini btn-mini-outline',
+      text: 'Later',
+      attrs: { type: 'button' },
+      dataset: { action: 'later-suggestion' },
+    }),
+    el('button', {
+      className: 'btn-mini btn-mini-muted',
+      text: 'Never',
+      attrs: { type: 'button' },
+      dataset: { action: 'never-suggestion' },
     }),
   ]);
   card.appendChild(info);
@@ -538,6 +545,10 @@ function render(): void {
   }
 
   root.appendChild(body);
+
+  // Import / Export section (always shown if there are features or after import)
+  const backup = buildBackupSection();
+  root.appendChild(backup);
 }
 
 function buildEmptyState(): HTMLElement {
@@ -730,6 +741,107 @@ async function copyError(id: string): Promise<void> {
   }
 }
 
+async function laterSuggestion(id: string): Promise<void> {
+  await dismissSuggestion(id);
+  render();
+  showToast('Snoozed');
+}
+
+async function neverSuggestion(id: string): Promise<void> {
+  if (!confirm('Permanently hide this suggestion?')) return;
+  await dismissSuggestion(id);
+  render();
+  showToast('Dismissed permanently');
+}
+
+function buildBackupSection(): HTMLElement {
+  const section = el('div', { className: 'backup-section' });
+  const heading = el('div', { className: 'backup-heading', text: 'Backup & Restore' });
+
+  const actions = el('div', { className: 'backup-actions' });
+
+  const exportBtn = el('button', {
+    className: 'backup-btn',
+    text: 'Export features',
+    attrs: { type: 'button' },
+    dataset: { action: 'export-features' },
+  });
+
+  const importBtn = el('button', {
+    className: 'backup-btn',
+    text: 'Import features',
+    attrs: { type: 'button' },
+    dataset: { action: 'import-trigger' },
+  });
+
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = '.json';
+  fileInput.className = 'import-input';
+
+  const importMode = el('div', { className: 'import-mode', attrs: { hidden: '' } }, [
+    el('button', {
+      className: 'import-mode-btn',
+      text: 'Merge with existing',
+      attrs: { type: 'button' },
+      dataset: { action: 'import-merge' },
+    }),
+    el('button', {
+      className: 'import-mode-btn',
+      text: 'Replace all',
+      attrs: { type: 'button' },
+      dataset: { action: 'import-replace' },
+    }),
+  ]);
+
+  let pendingFile: File | null = null;
+
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files?.[0];
+    if (!file) return;
+    pendingFile = file;
+    importMode.removeAttribute('hidden');
+  });
+
+  importBtn.addEventListener('click', () => {
+    fileInput.click();
+  });
+
+  const doImport = async (mode: 'merge' | 'replace') => {
+    if (!pendingFile) return;
+    try {
+      const result = await importFeatures(pendingFile, mode);
+      pendingFile = null;
+      importMode.setAttribute('hidden', '');
+      await refreshFromBackend();
+      render();
+      showToast(`Imported ${result.count} feature${result.count === 1 ? '' : 's'}`);
+    } catch (e) {
+      showToast((e as Error).message || 'Import failed');
+    }
+  };
+
+  importMode.querySelector('[data-action="import-merge"]')?.addEventListener('click', () => void doImport('merge'));
+  importMode.querySelector('[data-action="import-replace"]')?.addEventListener('click', () => void doImport('replace'));
+
+  exportBtn.addEventListener('click', async () => {
+    try {
+      await exportFeatures();
+      showToast('Exported');
+    } catch (e) {
+      showToast((e as Error).message || 'Export failed');
+    }
+  });
+
+  actions.appendChild(exportBtn);
+  actions.appendChild(importBtn);
+  actions.appendChild(fileInput);
+  section.appendChild(heading);
+  section.appendChild(actions);
+  section.appendChild(importMode);
+  return section;
+}
+
 function openOptions(): void {
   try {
     chrome.runtime.openOptionsPage();
@@ -787,6 +899,8 @@ root.addEventListener('click', (e) => {
     if (!sId) return;
     if (action === 'try-suggestion') void trySuggestion(sId);
     else if (action === 'dismiss-suggestion') void dismissSuggestionAction(sId);
+    else if (action === 'later-suggestion') void laterSuggestion(sId);
+    else if (action === 'never-suggestion') void neverSuggestion(sId);
     return;
   }
 
