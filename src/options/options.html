@@ -3,8 +3,132 @@
   <head>
     <meta charset="UTF-8" />
     <title>BOB — Options</title>
+    <link rel="stylesheet" href="./options.css" />
   </head>
   <body>
-    <p>Options page — under construction.</p>
+    <main class="card">
+      <header class="header">
+        <h1>BOB Settings</h1>
+        <p class="subtitle">Choose your LLM provider and add an API key.</p>
+      </header>
+
+      <form id="settings-form" novalidate>
+        <fieldset class="provider-group">
+          <legend>Provider</legend>
+          <label class="radio">
+            <input type="radio" name="provider" value="anthropic" />
+            <span>Anthropic (Claude)</span>
+          </label>
+          <label class="radio">
+            <input type="radio" name="provider" value="openai" />
+            <span>OpenAI</span>
+          </label>
+          <label class="radio">
+            <input type="radio" name="provider" value="google" />
+            <span>Google (Gemini)</span>
+          </label>
+        </fieldset>
+
+        <section class="key-row">
+          <label for="key-anthropic">Anthropic API key</label>
+          <div class="key-input">
+            <input
+              type="password"
+              id="key-anthropic"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="sk-ant-..."
+            />
+            <button
+              type="button"
+              class="reveal"
+              data-target="key-anthropic"
+              aria-label="Show or hide key"
+            >
+              Show
+            </button>
+          </div>
+          <a
+            class="key-link"
+            href="https://console.anthropic.com/settings/keys"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Get an Anthropic key →</a
+          >
+          <p class="warn" id="warn-anthropic" hidden></p>
+        </section>
+
+        <section class="key-row">
+          <label for="key-openai">OpenAI API key</label>
+          <div class="key-input">
+            <input
+              type="password"
+              id="key-openai"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="sk-..."
+            />
+            <button
+              type="button"
+              class="reveal"
+              data-target="key-openai"
+              aria-label="Show or hide key"
+            >
+              Show
+            </button>
+          </div>
+          <a
+            class="key-link"
+            href="https://platform.openai.com/api-keys"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Get an OpenAI key →</a
+          >
+          <p class="warn" id="warn-openai" hidden></p>
+        </section>
+
+        <section class="key-row">
+          <label for="key-google">Google AI API key</label>
+          <div class="key-input">
+            <input
+              type="password"
+              id="key-google"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="AIza..."
+            />
+            <button
+              type="button"
+              class="reveal"
+              data-target="key-google"
+              aria-label="Show or hide key"
+            >
+              Show
+            </button>
+          </div>
+          <a
+            class="key-link"
+            href="https://aistudio.google.com/app/apikey"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Get a Google AI key →</a
+          >
+          <p class="warn" id="warn-google" hidden></p>
+        </section>
+
+        <section class="model-row">
+          <label for="model">Model override (optional)</label>
+          <input type="text" id="model" autocomplete="off" spellcheck="false" placeholder="" />
+          <p class="hint">Leave blank to use the provider's default.</p>
+        </section>
+
+        <div class="actions">
+          <button type="submit" class="primary">Save</button>
+          <span id="status" class="status" role="status" aria-live="polite"></span>
+        </div>
+      </form>
+    </main>
+
+    <script type="module" src="./options.ts"></script>
   </body>
 </html>
