@@ -1,24 +1,11 @@
-import type { GenerateRequest, GenerateResponse, LLMProvider } from '../shared/types';
-import type { Provider } from './providers/types';
-import { getSettings } from './settings';
-import { anthropicProvider } from './providers/anthropic';
-import { openaiProvider } from './providers/openai';
-import { googleProvider } from './providers/google';
-
-const PROVIDERS: Record<LLMProvider, Provider> = {
-  anthropic: anthropicProvider,
-  openai: openaiProvider,
-  google: googleProvider,
-};
+import type { GenerateRequest, GenerateResponse } from '../shared/types';
+import { runAgent } from './agent';
 
 export async function generateFeature(req: GenerateRequest): Promise<GenerateResponse> {
-  const settings = await getSettings();
-  const provider = PROVIDERS[settings.provider];
-  const apiKey = settings.apiKeys[settings.provider];
-  if (!apiKey) {
-    throw new Error(
-      `No API key set for ${provider.name}. Open the BOB options page (right-click extension icon → Options) to add one.`,
-    );
-  }
-  return provider.generate(req, apiKey, settings.model);
+  const result = await runAgent(req);
+  // Attach trace to the response via a side channel — Phase 3
+  // integration may surface it. For now, log to service worker:
+  console.log('[bob] agent trace:', result.trace);
+  const { trace, ...response } = result;
+  return response;
 }
