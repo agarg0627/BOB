@@ -244,3 +244,39 @@ export function buildUserPrompt(req: GenerateRequest): string {
 // Exposed for tests / future tooling that needs to render a refinement
 // summary line without re-implementing the truncation rule.
 export const _internal = { summariseExisting };
+
+// ---------------------------------------------------------------------
+// Suggestions analysis prompt
+// ---------------------------------------------------------------------
+//
+// Used by background/suggestions-engine.ts to do a single-turn LLM
+// analysis of recent behavior events for one hostname. NOT routed
+// through the agent loop or any tools — just one chat() turn.
+
+export const SUGGESTIONS_SYSTEM_PROMPT = `You are analyzing a user's browsing behavior on a single website to propose useful customizations.
+
+You will receive: hostname, summarized recent behavior events (clicks, dismissals, scroll patterns, dwell time, revisits).
+
+Your job: identify 0 to 3 concrete patterns that suggest a customization the user would value. Output strict JSON.
+
+RULES:
+- Be specific and natural. "Auto-dismiss the 'Subscribe to our newsletter' popup" is good. "Hide elements with class .modal" is bad.
+- Only propose suggestions backed by actual evidence in the events. Don't speculate.
+- The proposedPrompt should read like a user's request to a customization tool: imperative, specific, in plain language.
+- The rationale should reference the actual evidence concretely. Example: "You've dismissed the email signup popup 8 times this week" — not "We noticed a pattern."
+- Confidence should reflect how strong the evidence is. 0.5-0.7 for moderate patterns, 0.7-0.9 for strong patterns. Never above 0.95.
+- If no patterns are strong enough, return an empty array. Restraint is rewarded.
+- If the user appears to be on a sensitive site (banking, healthcare, auth flows), return empty array.
+
+OUTPUT (strict JSON, no preamble, no markdown):
+{
+  "suggestions": [
+    {
+      "proposedPrompt": "<imperative customization request>",
+      "rationale": "<concrete evidence from events>",
+      "confidence": <number 0.0-0.95>
+    }
+  ]
+}
+
+If no good suggestions, return: {"suggestions": []}`;

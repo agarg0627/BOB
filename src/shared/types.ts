@@ -52,7 +52,25 @@ export interface AgentTrace {
 }
 
 export interface UserBehaviorEvent {
-  type: 'click_close' | 'click_dismiss' | 'hide_element' | 'time_on_site';
+  type:
+    | 'click_close'
+    | 'click_dismiss'
+    | 'hide_element'
+    | 'time_on_site'
+    // User scrolled past a region then bounced back to within ~100px
+    // of the original Y. Suggests something on the page is worth
+    // revisiting (or worth pinning / sticky-ing).
+    | 'scroll_past_back'
+    // Aggregated marker fired when the same close-like signature has
+    // been dismissed N+ times. Heuristic-only producer for now; the
+    // LLM analyzer reads this if present.
+    | 'repeated_dismissal'
+    // 30+ seconds on the page, visible, with no click / scroll /
+    // keypress. Hints that the user is reading rather than navigating.
+    | 'long_dwell'
+    // Returned to the same hostname within 5 minutes of the previous
+    // visit. Hints at a habitual / repeated workflow.
+    | 'rapid_revisit';
   url: string;
   hostname: string;
   selector?: string;
