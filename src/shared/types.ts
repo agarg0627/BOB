@@ -109,6 +109,7 @@ export interface GenerateResponse {
 
 export type Message =
   | { type: 'GENERATE_FEATURE'; req: GenerateRequest }
+  | { type: 'GENERATE_FEATURE_STREAM'; req: GenerateRequest }
   | { type: 'TOOL_QUERY_DOM'; selector: string; tabId: number }
   | { type: 'TOOL_TEST_CODE'; code: string; tabId: number }
   | { type: 'TRACK_BEHAVIOR'; event: UserBehaviorEvent }

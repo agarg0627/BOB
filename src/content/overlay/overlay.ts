@@ -12,6 +12,7 @@ export interface OnGenerateOptions {
   signal?: AbortSignal;
   refinementHistory?: Array<{ role: 'user' | 'assistant'; content: string }>;
   effortMode?: 'standard' | 'high';
+  onProgress?: (message: string) => void;
 }
 
 export interface OverlayCallbacks {
@@ -50,6 +51,7 @@ interface OverlayInstance {
   refineBannerName: HTMLSpanElement;
   promptAction: HTMLButtonElement;
   promptActionLabel: HTMLSpanElement;
+  progressLog: HTMLDivElement;
   status: HTMLDivElement;
   preview: PreviewElements;
   state: State;
@@ -261,6 +263,31 @@ function clearPreviewError(): void {
   instance.preview.status.classList.remove('visible');
 }
 
+// ---- Progress display ----
+
+const MAX_PROGRESS_LINES = 3;
+
+function showProgressMessage(text: string): void {
+  if (!instance) return;
+  const log = instance.progressLog;
+
+  const line = document.createElement('div');
+  line.className = 'progress-line';
+  line.textContent = text;
+
+  log.appendChild(line);
+
+  // Cap visible lines
+  while (log.children.length > MAX_PROGRESS_LINES) {
+    log.removeChild(log.firstChild!);
+  }
+}
+
+function clearProgress(): void {
+  if (!instance) return;
+  instance.progressLog.replaceChildren();
+}
+
 // ---- Actions ----
 
 async function submitPrompt(): Promise<void> {
@@ -272,10 +299,15 @@ async function submitPrompt(): Promise<void> {
   const wasRefining = instance.state === 'refine';
   instance.originalPrompt = value;
   clearPromptError();
+  clearProgress();
   setState('loading');
   const token = ++instance.requestToken;
 
   const effortMode = getEffortMode();
+  const progressCb = (message: string) => {
+    if (!instance || instance.requestToken !== token) return;
+    showProgressMessage(message);
+  };
   let options: OnGenerateOptions | undefined;
 
   if (wasRefining && instance.installedFeatureId) {
@@ -291,6 +323,7 @@ async function submitPrompt(): Promise<void> {
       parentFeatureId: instance.installedFeatureId,
       refinementHistory: cappedHistory,
       effortMode: effortMode !== 'standard' ? effortMode : undefined,
+      onProgress: progressCb,
     };
   } else if (instance.editing) {
     // Editing an existing feature
@@ -299,9 +332,13 @@ async function submitPrompt(): Promise<void> {
       existingFeatureName: instance.editing.feature.name,
       parentFeatureId: instance.editing.feature.id,
       effortMode: effortMode !== 'standard' ? effortMode : undefined,
+      onProgress: progressCb,
     };
-  } else if (effortMode !== 'standard') {
-    options = { effortMode };
+  } else {
+    options = {
+      effortMode: effortMode !== 'standard' ? effortMode : undefined,
+      onProgress: progressCb,
+    };
   }
 
   try {
@@ -660,6 +697,10 @@ function buildOverlay(): OverlayInstance {
   chipsContainer.className = 'chips';
   chipsContainer.setAttribute('hidden', '');
 
+  // Progress log (shown during loading)
+  const progressLog = document.createElement('div');
+  progressLog.className = 'progress-log';
+
   const status = document.createElement('div');
   status.className = 'status';
   status.setAttribute('role', 'alert');
@@ -686,6 +727,7 @@ function buildOverlay(): OverlayInstance {
   promptView.appendChild(promptHeader);
   promptView.appendChild(row);
   promptView.appendChild(chipsContainer);
+  promptView.appendChild(progressLog);
   promptView.appendChild(status);
   promptView.appendChild(hint);
 
@@ -769,6 +811,7 @@ function buildOverlay(): OverlayInstance {
     refineBannerName,
     promptAction,
     promptActionLabel,
+    progressLog,
     status,
     preview,
     state: 'closed',
@@ -887,6 +930,7 @@ export function closeOverlay(): void {
   }
   clearPromptError();
   clearPreviewError();
+  clearProgress();
   clearRefineMode();
   setState('closed');
   setEditing(null);

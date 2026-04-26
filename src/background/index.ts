@@ -1,5 +1,5 @@
 import { Storage } from '../shared/storage';
-import { generateFeature } from './llm';
+import { generateFeature, generateFeatureWithProgress } from './llm';
 import { getSettings, setSettings } from './settings';
 import { recordResult } from './error-recorder';
 import {
@@ -10,7 +10,7 @@ import {
   dismissSuggestion,
   acceptSuggestion,
 } from './suggestions-engine';
-import type { Message } from '../shared/types';
+import type { GenerateRequest, Message } from '../shared/types';
 
 chrome.runtime.onInstalled.addListener(() => {
   console.log('[ext] background started');
@@ -308,5 +308,26 @@ chrome.runtime.onMessage.addListener(
     return true;
   },
 );
+
+// Streaming generation via long-lived port
+chrome.runtime.onConnect.addListener((port) => {
+  if (!port.name.startsWith('bob-stream-')) return;
+
+  port.onMessage.addListener((msg: { type: string; req?: GenerateRequest; tabId?: number }) => {
+    if (msg.type !== 'START_STREAM' || !msg.req) return;
+    const req = { ...msg.req, tabId: msg.tabId };
+
+    (async () => {
+      try {
+        const result = await generateFeatureWithProgress(req, (event) => {
+          try { port.postMessage({ type: 'progress', event }); } catch { /* port closed */ }
+        });
+        try { port.postMessage({ type: 'done', result }); } catch { /* port closed */ }
+      } catch (e) {
+        try { port.postMessage({ type: 'error', error: String(e) }); } catch { /* port closed */ }
+      }
+    })();
+  });
+});
 
 export {};

@@ -6,7 +6,6 @@ import { initLifecycle } from './lifecycle';
 import { initBehaviorTracker } from './behavior-tracker';
 import { prunePage } from './dom-prune';
 import { initOverlay, openOverlayForEdit, openOverlayWithPrompt } from './overlay/overlay';
-import { showActiveBadge } from './page-badge';
 import type { Feature, GenerateResponse, Message } from '../shared/types';
 
 console.log('[bob] content script loaded on', location.href);
@@ -22,9 +21,6 @@ initLifecycle({
     try {
       const r = await runAllForUrl(location.href);
       console.log('[bob] page ready, ran', r.ran, 'features, errors:', r.errors);
-      if (r.ran > 0) {
-        try { showActiveBadge(r.ran); } catch { /* badge is non-critical */ }
-      }
     } catch (e) {
       console.error('[bob] runAllForUrl on page ready failed:', e);
     }
@@ -33,14 +29,81 @@ initLifecycle({
     try {
       const r = await runAllForUrl(location.href);
       console.log('[bob] url change, ran', r.ran, 'features, errors:', r.errors);
-      if (r.ran > 0) {
-        try { showActiveBadge(r.ran); } catch { /* badge is non-critical */ }
-      }
     } catch (e) {
       console.error('[bob] runAllForUrl on url change failed:', e);
     }
   },
 });
+
+// ---- Streaming generation helper ----
+
+interface ProgressEvent {
+  type: 'iteration' | 'tool_call' | 'tool_result' | 'final';
+  n?: number;
+  total?: number;
+  name?: string;
+  input?: unknown;
+  preview?: string;
+}
+
+function formatProgressEvent(e: ProgressEvent): string {
+  switch (e.type) {
+    case 'iteration':
+      return `Thinking\u2026 (step ${e.n})`;
+    case 'tool_call':
+      if (e.name === 'query_dom') return 'Inspecting page elements\u2026';
+      if (e.name === 'test_code') return 'Testing the approach\u2026';
+      return `Calling ${e.name}\u2026`;
+    case 'tool_result':
+      return 'Got results';
+    case 'final':
+      return 'Writing code\u2026';
+    default:
+      return '';
+  }
+}
+
+function generateViaStream(
+  req: import('../shared/types').GenerateRequest,
+  onProgress: (message: string) => void,
+): Promise<GenerateResponse> {
+  return new Promise((resolve, reject) => {
+    let resolved = false;
+    const port = chrome.runtime.connect({ name: 'bob-stream-' + Math.random().toString(36).slice(2) });
+
+    port.onMessage.addListener((msg: { type: string; event?: ProgressEvent; result?: GenerateResponse; error?: string }) => {
+      if (resolved) return;
+      if (msg.type === 'progress' && msg.event) {
+        const text = formatProgressEvent(msg.event);
+        if (text) onProgress(text);
+      } else if (msg.type === 'done' && msg.result) {
+        resolved = true;
+        resolve(msg.result);
+      } else if (msg.type === 'error') {
+        resolved = true;
+        reject(new Error(msg.error || 'Generation failed'));
+      }
+    });
+
+    port.onDisconnect.addListener(() => {
+      if (!resolved) {
+        resolved = true;
+        reject(new Error('Stream disconnected'));
+      }
+    });
+
+    // Get the active tab id to pass along
+    (async () => {
+      try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        port.postMessage({ type: 'START_STREAM', req, tabId: tab?.id });
+      } catch (e) {
+        resolved = true;
+        reject(e);
+      }
+    })();
+  });
+}
 
 // 3. Wire the overlay
 initOverlay({
@@ -51,17 +114,32 @@ initOverlay({
     } catch (e) {
       console.warn('[bob] prunePage failed, continuing without:', e);
     }
+    const req = {
+      prompt,
+      url: location.href,
+      domSnapshot,
+      existingCode: options?.existingCode,
+      existingFeatureName: options?.existingFeatureName,
+      effortMode: options?.effortMode,
+      refinementHistory: options?.refinementHistory,
+    };
+
+    const onProgress = options?.onProgress;
+
+    // Try streaming via port for live progress
+    if (onProgress) {
+      try {
+        const result = await generateViaStream(req, onProgress);
+        return result;
+      } catch (e) {
+        console.warn('[bob] streaming failed, falling back to non-streaming:', e);
+        // Fall through to non-streaming
+      }
+    }
+
     const res = await send<GenerateResponse | { error: string }>({
       type: 'GENERATE_FEATURE',
-      req: {
-        prompt,
-        url: location.href,
-        domSnapshot,
-        existingCode: options?.existingCode,
-        existingFeatureName: options?.existingFeatureName,
-        effortMode: options?.effortMode,
-        refinementHistory: options?.refinementHistory,
-      },
+      req,
     });
     if ('error' in res) throw new Error(res.error);
     return res;

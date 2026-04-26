@@ -109,6 +109,38 @@ button {
   height: 18px;
 }
 
+/* ---- Stats row ---- */
+.stats-row {
+  display: flex;
+  gap: 6px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.stat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg-elev);
+  border: none;
+  border-radius: 12px;
+  padding: 3px 10px;
+  font-size: 11px;
+  color: var(--fg-muted);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.stat-pill:hover {
+  background: var(--border-strong);
+}
+
+.stat-num {
+  font-family: 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+  font-weight: 700;
+  color: var(--fg);
+}
+
 /* ---- Sections ---- */
 .popup-body {
   padding: 8px 0 12px;

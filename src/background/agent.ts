@@ -69,6 +69,14 @@ variants are already declared in src/shared/types.ts.
 */
 
 import type { GenerateRequest, GenerateResponse, AgentTrace } from '../shared/types';
+
+export type AgentProgressEvent =
+  | { type: 'iteration'; n: number; total: number }
+  | { type: 'tool_call'; name: string; input: unknown }
+  | { type: 'tool_result'; name: string; preview: string }
+  | { type: 'final' };
+
+export type ProgressCallback = (e: AgentProgressEvent) => void;
 import { getSettings } from './settings';
 import { dispatchTool, TOOL_DEFINITIONS } from './tools';
 import { SYSTEM_PROMPT, buildUserPrompt } from './providers/prompt';
@@ -92,6 +100,7 @@ const HIGH_EFFORT_MAX_ITERATIONS = 12;
 
 export async function runAgent(
   req: GenerateRequest,
+  onProgress?: ProgressCallback,
 ): Promise<GenerateResponse & { trace: AgentTrace }> {
   const settings = await getSettings();
   const provider = PROVIDERS[settings.provider];
@@ -117,6 +126,7 @@ export async function runAgent(
 
   for (let i = 0; i < maxIterations; i++) {
     trace.iterations++;
+    onProgress?.({ type: 'iteration', n: i + 1, total: maxIterations });
     const turn = await provider.chat({
       messages,
       system: SYSTEM_PROMPT,
@@ -135,7 +145,9 @@ export async function runAgent(
       });
       // Dispatch each tool, append tool_result messages
       for (const call of turn.toolCalls) {
+        onProgress?.({ type: 'tool_call', name: call.name, input: call.input });
         const result = await dispatchTool(call, req.tabId!);
+        onProgress?.({ type: 'tool_result', name: call.name, preview: result.result.slice(0, 100) });
         trace.toolCalls.push({
           name: call.name,
           input: call.input,
@@ -152,6 +164,7 @@ export async function runAgent(
     }
 
     // No tool calls — this should be the final answer
+    onProgress?.({ type: 'final' });
     const text = turn.text ?? '';
     const parsed = parseFeatureJSON(text, req.url);
     return { ...parsed, trace };

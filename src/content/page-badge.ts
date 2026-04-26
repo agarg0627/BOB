@@ -1,3 +1,7 @@
+// DEPRECATED: page badge is no longer shown. The popup
+// displays an active count instead. Module kept for
+// potential future use.
+
 const HOST_TAG = 'bob-badge-host';
 const AUTO_FADE_MS = 4000;
 

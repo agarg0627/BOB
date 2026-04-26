@@ -494,6 +494,41 @@ function matchesActiveTab(f: Feature): boolean {
   return patternMatchesUrl(f.urlPattern, state.activeUrl);
 }
 
+function buildStatsRow(activeHere: number, total: number): HTMLElement {
+  const row = el('div', { className: 'stats-row' });
+
+  if (state.hostname) {
+    const activePill = el('button', {
+      className: 'stat-pill',
+      attrs: { type: 'button' },
+    }, [
+      el('span', { className: 'stat-num', text: String(activeHere) }),
+      document.createTextNode(' active here'),
+    ]);
+    activePill.addEventListener('click', () => {
+      const section = root.querySelector('.features-section');
+      section?.scrollIntoView({ behavior: 'smooth' });
+    });
+    row.appendChild(activePill);
+  }
+
+  const totalPill = el('button', {
+    className: 'stat-pill',
+    attrs: { type: 'button' },
+  }, [
+    el('span', { className: 'stat-num', text: String(total) }),
+    document.createTextNode(' total'),
+  ]);
+  totalPill.addEventListener('click', () => {
+    const sections = root.querySelectorAll('.features-section');
+    const target = sections[sections.length - 1];
+    target?.scrollIntoView({ behavior: 'smooth' });
+  });
+  row.appendChild(totalPill);
+
+  return row;
+}
+
 function buildSection(
   title: string,
   hostnameLabel: string | null,
@@ -554,6 +589,13 @@ function render(): void {
     })(),
   ]);
   root.appendChild(header);
+
+  if (state.features.length > 0) {
+    const activeHere = state.activeUrl
+      ? state.features.filter((f) => matchesActiveTab(f) && f.enabled && !f.lastError).length
+      : 0;
+    root.appendChild(buildStatsRow(activeHere, state.features.length));
+  }
 
   const body = el('div', { className: 'popup-body' });
 
