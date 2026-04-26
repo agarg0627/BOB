@@ -245,12 +245,13 @@ function toResponsesInput(messages: ProviderMessage[]): {
         for (const tc of msg.toolCalls) {
           items.push({
             type: 'function_call',
-            // ToolCall carries a single id; the Responses API distinguishes
-            // an item id from the correlation call_id. We use the same
-            // value for both — call_id is the canonical correlation key
-            // and matches the call_id we'll emit on function_call_output
-            // when the agent feeds the tool result back.
-            id: tc.id,
+            // The Responses API requires `id` to start with 'fc_'.
+            // Our ToolCall.id comes from the API's call_id (starts with
+            // 'call_'), so we derive an fc_-prefixed id for the item.
+            // call_id stays as the original — it's the correlation key
+            // that matches the function_call_output we emit for the
+            // tool result.
+            id: 'fc_' + tc.id.replace(/^call_/, ''),
             call_id: tc.id,
             name: tc.name,
             arguments: JSON.stringify(tc.input),
