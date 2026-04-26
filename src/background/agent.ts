@@ -96,6 +96,33 @@ const PROVIDERS: Record<string, Provider> = {
 // cap because extended-thinking turns can spend multiple iterations on
 // plan exploration before the first tool call, and we want to keep
 // headroom for the subsequent tool-use cycles.
+function humanizeError(rawMessage: string): string {
+  const msg = rawMessage.toLowerCase();
+
+  if (msg.includes('no api key') || msg.includes('api key not')) {
+    return "I'm not configured yet \u2014 add an API key in Settings.";
+  }
+  if (msg.includes('exceeded max iterations')) {
+    return "I tried hard but couldn't quite get this one. Try being more specific, or simplify the request.";
+  }
+  if (msg.includes('non-json final response')) {
+    return 'I got confused mid-task. Try rephrasing the request.';
+  }
+  if (msg.includes('rate limit') || msg.includes('429')) {
+    return 'The AI service is rate-limiting me. Wait a moment and try again.';
+  }
+  if (msg.includes('quota') || msg.includes('insufficient_quota')) {
+    return 'Your API key has run out of quota. Check your provider\u2019s billing page.';
+  }
+  if (msg.includes('401') || msg.includes('unauthorized') || msg.includes('authentication')) {
+    return "Your API key isn't working. Check it in Settings.";
+  }
+  if (msg.includes('cors') || msg.includes('failed to fetch')) {
+    return "I couldn't reach the AI service. Check your internet connection.";
+  }
+  return rawMessage;
+}
+
 const STANDARD_MAX_ITERATIONS = 6;
 const HIGH_EFFORT_MAX_ITERATIONS = 12;
 
@@ -107,7 +134,9 @@ export async function runAgent(
   const provider = PROVIDERS[settings.provider];
   const apiKey = settings.apiKeys[settings.provider];
   if (!apiKey) {
-    throw new Error(`No API key for ${provider.name}. Open BOB options.`);
+    const raw = `No API key for ${provider.name}. Open BOB options.`;
+    console.warn('[bob] agent error:', raw);
+    throw new Error(humanizeError(raw));
   }
 
   // Effort mode resolution: an explicit per-request override wins, then
@@ -128,14 +157,22 @@ export async function runAgent(
   for (let i = 0; i < maxIterations; i++) {
     trace.iterations++;
     onProgress?.({ type: 'iteration', n: i + 1, total: maxIterations });
-    const turn = await provider.chat({
-      messages,
-      system: SYSTEM_PROMPT,
-      tools,
-      apiKey,
-      model: settings.model,
-      effortMode,
-    });
+
+    let turn;
+    try {
+      turn = await provider.chat({
+        messages,
+        system: SYSTEM_PROMPT,
+        tools,
+        apiKey,
+        model: settings.model,
+        effortMode,
+      });
+    } catch (e) {
+      const raw = e instanceof Error ? e.message : String(e);
+      console.warn('[bob] provider error:', raw);
+      throw new Error(humanizeError(raw));
+    }
 
     if (turn.thinkingText) {
       onProgress?.({ type: 'thinking', text: turn.thinkingText });
@@ -171,13 +208,19 @@ export async function runAgent(
     // No tool calls — this should be the final answer
     onProgress?.({ type: 'final' });
     const text = turn.text ?? '';
-    const parsed = parseFeatureJSON(text, req.url);
-    return { ...parsed, trace };
+    try {
+      const parsed = parseFeatureJSON(text, req.url);
+      return { ...parsed, trace };
+    } catch (e) {
+      const raw = e instanceof Error ? e.message : String(e);
+      console.warn('[bob] parse error:', raw);
+      throw new Error(humanizeError(raw));
+    }
   }
 
-  throw new Error(
-    `Agent exceeded max iterations (${maxIterations}, effortMode=${effortMode}) without producing a feature`,
-  );
+  const raw = `Agent exceeded max iterations (${maxIterations}, effortMode=${effortMode}) without producing a feature`;
+  console.warn('[bob] agent error:', raw);
+  throw new Error(humanizeError(raw));
 }
 
 function findJsonObject(s: string): string | null {

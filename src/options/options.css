@@ -17,6 +17,71 @@ body {
   gap: 16px;
 }
 
+/* ---- No-key banner ---- */
+.no-key-banner {
+  width: 100%;
+  max-width: 480px;
+  background: #fff5e6;
+  border: 1px solid #ffd9a8;
+  border-radius: 12px;
+  padding: 16px 20px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.no-key-banner[hidden] {
+  display: none;
+}
+
+.no-key-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #b25000;
+}
+
+.no-key-body {
+  font-size: 12.5px;
+  color: #6e6e73;
+}
+
+.no-key-help-toggle {
+  background: transparent;
+  border: none;
+  color: #0a84ff;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 0;
+  margin-top: 4px;
+}
+
+.no-key-help-toggle:hover {
+  text-decoration: underline;
+}
+
+.no-key-links {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.no-key-links[hidden] {
+  display: none;
+}
+
+.no-key-links a {
+  font-size: 12px;
+  color: #0a84ff;
+  text-decoration: none;
+}
+
+.no-key-links a:hover {
+  text-decoration: underline;
+}
+
 .card {
   background: #fff;
   border: 1px solid #e5e5ea;

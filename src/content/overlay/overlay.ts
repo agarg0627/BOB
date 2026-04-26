@@ -191,8 +191,8 @@ function setState(next: State): void {
     instance.promptAction.setAttribute('aria-label', 'Refine');
   } else {
     instance.promptAction.classList.remove('stop');
-    instance.promptActionLabel.textContent = 'Generate';
-    instance.promptAction.setAttribute('aria-label', 'Generate');
+    instance.promptActionLabel.textContent = 'Build it';
+    instance.promptAction.setAttribute('aria-label', 'Build it');
   }
 
   updateChips();
@@ -704,9 +704,9 @@ function buildOverlay(): OverlayInstance {
   promptAction.type = 'button';
   promptAction.className = 'prompt-action btn btn-primary';
   const promptActionLabel = document.createElement('span');
-  promptActionLabel.textContent = 'Generate';
+  promptActionLabel.textContent = 'Build it';
   promptAction.appendChild(promptActionLabel);
-  promptAction.setAttribute('aria-label', 'Generate');
+  promptAction.setAttribute('aria-label', 'Build it');
   promptAction.addEventListener('click', () => {
     if (!instance) return;
     if (instance.state === 'loading') stopGeneration();

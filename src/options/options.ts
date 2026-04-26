@@ -12,10 +12,18 @@ const PROVIDER_DEFAULTS: Record<LLMProvider, string> = {
 };
 
 const KEY_VALIDATORS: Record<LLMProvider, (key: string) => string | null> = {
-  anthropic: (k) => (k.startsWith('sk-ant-') ? null : 'Anthropic keys usually start with "sk-ant-".'),
-  openai: (k) => (k.startsWith('sk-') ? null : 'OpenAI keys usually start with "sk-".'),
+  anthropic: (k) =>
+    k.startsWith('sk-ant-')
+      ? null
+      : "This doesn't look like a valid Anthropic key (expected sk-ant-\u2026). It might still work \u2014 providers occasionally change formats.",
+  openai: (k) =>
+    k.startsWith('sk-')
+      ? null
+      : "This doesn't look like a valid OpenAI key (expected sk-\u2026). It might still work \u2014 providers occasionally change formats.",
   google: (k) =>
-    /^[A-Za-z0-9_-]{30,}$/.test(k) ? null : 'Google keys are typically ~39 alphanumeric chars.',
+    /^[A-Za-z0-9_-]{30,}$/.test(k)
+      ? null
+      : "This doesn't look like a valid Google AI key (~39 alphanumeric chars expected). It might still work \u2014 providers occasionally change formats.",
 };
 
 const form = document.getElementById('settings-form') as HTMLFormElement;
@@ -33,6 +41,10 @@ const warnEls: Record<LLMProvider, HTMLParagraphElement> = {
   openai: document.getElementById('warn-openai') as HTMLParagraphElement,
   google: document.getElementById('warn-google') as HTMLParagraphElement,
 };
+
+const noKeyBanner = document.getElementById('no-key-banner') as HTMLDivElement | null;
+const noKeyHelpToggle = document.getElementById('no-key-help-toggle') as HTMLButtonElement | null;
+const noKeyLinks = document.getElementById('no-key-links') as HTMLDivElement | null;
 
 let statusTimer: number | undefined;
 
@@ -60,6 +72,18 @@ function updateModelPlaceholder(): void {
     } else {
       modelHintEl.hidden = true;
     }
+  }
+}
+
+function updateNoKeyBanner(): void {
+  if (!noKeyBanner) return;
+  const hasAny = (Object.keys(keyInputs) as LLMProvider[]).some(
+    (p) => !!keyInputs[p].value.trim(),
+  );
+  if (hasAny) {
+    noKeyBanner.setAttribute('hidden', '');
+  } else {
+    noKeyBanner.removeAttribute('hidden');
   }
 }
 
@@ -108,6 +132,7 @@ function populate(settings: ExtensionSettings): void {
   updateModelPlaceholder();
 
   (Object.keys(keyInputs) as LLMProvider[]).forEach(validateKey);
+  updateNoKeyBanner();
 }
 
 function wireRevealButtons(): void {
@@ -155,6 +180,7 @@ async function handleSubmit(event: SubmitEvent): Promise<void> {
   try {
     await setSettings(patch);
     showStatus('Saved.', 'ok');
+    updateNoKeyBanner();
   } catch (e) {
     showStatus(`Error: ${(e as Error).message}`, 'error');
   }
@@ -166,6 +192,19 @@ async function init(): Promise<void> {
   wireKeyValidation();
   form.addEventListener('submit', handleSubmit);
 
+  // No-key banner: toggle help links
+  noKeyHelpToggle?.addEventListener('click', () => {
+    if (!noKeyLinks) return;
+    const hidden = noKeyLinks.hasAttribute('hidden');
+    if (hidden) noKeyLinks.removeAttribute('hidden');
+    else noKeyLinks.setAttribute('hidden', '');
+  });
+
+  // Update banner as keys are typed
+  (Object.keys(keyInputs) as LLMProvider[]).forEach((p) => {
+    keyInputs[p].addEventListener('input', updateNoKeyBanner);
+  });
+
   try {
     const settings = await getSettings();
     populate(settings);
@@ -176,6 +215,9 @@ async function init(): Promise<void> {
 
 // ---- Demo seed ----
 
+// DEMO FEATURES: re-verify selectors before any demo. Sites
+// change DOM frequently. Last verified: <leave blank for human
+// to fill in after testing>.
 const DEMO_FEATURES = [
   {
     name: 'Hide YouTube Shorts',

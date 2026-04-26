@@ -60,9 +60,9 @@ function buildEmptyState(): HTMLElement {
   const wrap = document.createElement('div');
   wrap.className = 'bob-suggestion-empty';
   const a = document.createElement('p');
-  a.textContent = 'BOB is watching how you use the web.';
+  a.textContent = 'No suggestions yet.';
   const b = document.createElement('p');
-  b.textContent = 'Suggestions will appear as it learns your patterns.';
+  b.textContent = 'BOB will propose features as it learns your patterns.';
   wrap.appendChild(a);
   wrap.appendChild(b);
   return wrap;

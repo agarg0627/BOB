@@ -12,6 +12,7 @@ interface AppState {
   hostname: string | null;
   activeUrl: string | null;
   suggestions: Suggestion[];
+  hasApiKey: boolean;
 }
 
 const state: AppState = {
@@ -19,6 +20,7 @@ const state: AppState = {
   hostname: null,
   activeUrl: null,
   suggestions: [],
+  hasApiKey: true, // assume true until loaded
 };
 
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
@@ -312,7 +314,7 @@ function buildCard(f: Feature): HTMLElement {
 
   // ---- info column ----
   const info = el('div', { className: 'card-info' }, [
-    el('div', { className: 'feature-name', text: f.name || '(unnamed)' }),
+    el('div', { className: 'feature-name', text: f.name || '(unnamed)', attrs: { title: f.name || '(unnamed)' } }),
     f.description
       ? el('div', { className: 'feature-desc', text: f.description })
       : null,
@@ -379,6 +381,8 @@ function buildCard(f: Feature): HTMLElement {
     card.appendChild(buildErrorBlock(f.lastError));
   }
 
+  card.appendChild(buildCodeDisclosure(f.code));
+
   return card;
 }
 
@@ -437,6 +441,25 @@ function buildErrorBlock(errorText: string): HTMLElement {
   ]);
 
   return el('div', { className: 'error-block' }, [expander, detail]);
+}
+
+function buildCodeDisclosure(code: string): HTMLElement {
+  const toggle = el('button', {
+    className: 'code-toggle',
+    attrs: { type: 'button', 'aria-expanded': 'false' },
+    dataset: { action: 'toggle-code' },
+  }, [
+    el('span', { className: 'chev', text: '\u25b8' }),
+    document.createTextNode(' View code'),
+  ]);
+
+  const block = el('pre', {
+    className: 'code-block',
+    text: code,
+    attrs: { hidden: '' },
+  });
+
+  return el('div', { className: 'code-disclosure' }, [toggle, block]);
 }
 
 // ----------------------------------------------------------------------
@@ -600,6 +623,9 @@ function render(): void {
   const body = el('div', { className: 'popup-body' });
 
   if (state.features.length === 0 && state.suggestions.length === 0) {
+    if (!state.hasApiKey) {
+      body.appendChild(buildWelcome());
+    }
     body.appendChild(buildEmptyState());
   } else {
     const bulk = buildBulkActionsRow();
@@ -630,9 +656,28 @@ function buildEmptyState(): HTMLElement {
   wrap.appendChild(el('p', { text: 'No features yet.' }));
   const hint = el('p');
   hint.appendChild(document.createTextNode('Press '));
-  hint.appendChild(el('kbd', { text: '⌘K' }));
-  hint.appendChild(document.createTextNode(' on any page to create one.'));
+  hint.appendChild(el('kbd', { text: '\u2318K' }));
+  hint.appendChild(document.createTextNode(' on any webpage to make your first one.'));
   wrap.appendChild(hint);
+  return wrap;
+}
+
+function buildWelcome(): HTMLElement {
+  const wrap = el('div', { className: 'welcome' });
+  wrap.appendChild(el('p', { className: 'welcome-title', text: 'Welcome to BOB.' }));
+  wrap.appendChild(
+    el('p', {
+      className: 'welcome-body',
+      text: 'BOB lets you customize any webpage with natural language. To get started, add an API key from Anthropic, OpenAI, or Google.',
+    }),
+  );
+  const btn = el('button', {
+    className: 'welcome-btn',
+    text: 'Open Settings',
+    attrs: { type: 'button' },
+    dataset: { action: 'open-options' },
+  });
+  wrap.appendChild(btn);
   return wrap;
 }
 
@@ -818,6 +863,27 @@ function toggleErrorDetail(card: HTMLElement): void {
   else detail.removeAttribute('hidden');
 }
 
+function toggleCodeBlock(card: HTMLElement): void {
+  const toggle = card.querySelector<HTMLButtonElement>(
+    'button[data-action="toggle-code"]',
+  );
+  const block = card.querySelector<HTMLElement>('.code-block');
+  if (!toggle || !block) return;
+  const open = toggle.getAttribute('aria-expanded') === 'true';
+  toggle.setAttribute('aria-expanded', open ? 'false' : 'true');
+  if (open) {
+    block.setAttribute('hidden', '');
+    const chev = toggle.querySelector('.chev');
+    if (chev) chev.textContent = '\u25b8';
+    toggle.childNodes[1].textContent = ' View code';
+  } else {
+    block.removeAttribute('hidden');
+    const chev = toggle.querySelector('.chev');
+    if (chev) chev.textContent = '\u25be';
+    toggle.childNodes[1].textContent = ' Hide code';
+  }
+}
+
 async function copyError(id: string): Promise<void> {
   const f = findFeature(id);
   if (!f?.lastError) return;
@@ -930,6 +996,9 @@ root.addEventListener('click', (e) => {
     case 'toggle-error':
       toggleErrorDetail(card);
       break;
+    case 'toggle-code':
+      toggleCodeBlock(card);
+      break;
     case 'copy-error':
       void copyError(id);
       break;
@@ -952,18 +1021,31 @@ function showLoading(): void {
   );
 }
 
+async function loadHasApiKey(): Promise<boolean> {
+  try {
+    const data = await chrome.storage.local.get('settings');
+    const settings = data.settings as { apiKeys?: Record<string, string> } | undefined;
+    if (!settings?.apiKeys) return false;
+    return Object.values(settings.apiKeys).some((v) => !!v);
+  } catch {
+    return false;
+  }
+}
+
 async function boot(): Promise<void> {
   showLoading();
   const tabInfo = await getActiveTabInfo();
   state.activeUrl = tabInfo.url;
   state.hostname = tabInfo.hostname;
-  // Features and suggestions in parallel — neither blocks the other.
-  const [features, suggestions] = await Promise.all([
+  // Features, suggestions, and settings in parallel.
+  const [features, suggestions, hasApiKey] = await Promise.all([
     loadFeatures(),
     loadSuggestions(tabInfo.hostname),
+    loadHasApiKey(),
   ]);
   state.features = features;
   state.suggestions = suggestions;
+  state.hasApiKey = hasApiKey;
   render();
 }
 

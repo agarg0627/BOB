@@ -6,6 +6,17 @@
     <link rel="stylesheet" href="./options.css" />
   </head>
   <body>
+    <div class="no-key-banner" id="no-key-banner" hidden>
+      <p class="no-key-title">Add an API key to get started.</p>
+      <p class="no-key-body">Pick a provider and paste a key below. The key stays on your device.</p>
+      <button type="button" class="no-key-help-toggle" id="no-key-help-toggle">Where do I get an API key?</button>
+      <div class="no-key-links" id="no-key-links" hidden>
+        <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer">Anthropic (Claude) &rarr;</a>
+        <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">OpenAI &rarr;</a>
+        <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer">Google AI &rarr;</a>
+      </div>
+    </div>
+
     <main class="card">
       <header class="header">
         <h1>BOB Settings</h1>
