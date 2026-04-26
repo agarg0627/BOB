@@ -109,7 +109,12 @@ function humanizeError(rawMessage: string): string {
     return 'I got confused mid-task. Try rephrasing the request.';
   }
   if (msg.includes('rate limit') || msg.includes('429')) {
-    return 'The AI service is rate-limiting me. Wait a moment and try again.';
+    if (msg.includes('credits are depleted') || msg.includes('quota')) {
+      return "Your API key has run out of credits or quota. Check " +
+        "your provider's billing or quota page.";
+    }
+    return "The AI service is rate-limiting me. Wait a moment " +
+      "and try again.";
   }
   if (msg.includes('quota') || msg.includes('insufficient_quota')) {
     return 'Your API key has run out of quota. Check your provider\u2019s billing page.';
