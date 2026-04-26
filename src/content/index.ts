@@ -38,18 +38,19 @@ initLifecycle({
 // ---- Streaming generation helper ----
 
 interface ProgressEvent {
-  type: 'iteration' | 'tool_call' | 'tool_result' | 'final';
+  type: 'iteration' | 'tool_call' | 'tool_result' | 'thinking' | 'final';
   n?: number;
   total?: number;
   name?: string;
   input?: unknown;
   preview?: string;
+  text?: string;
 }
 
 function formatProgressEvent(e: ProgressEvent): string {
   switch (e.type) {
     case 'iteration':
-      return `Thinking\u2026 (step ${e.n})`;
+      return `Working\u2026 (step ${e.n})`;
     case 'tool_call':
       if (e.name === 'query_dom') return 'Inspecting page elements\u2026';
       if (e.name === 'test_code') return 'Testing the approach\u2026';
@@ -65,7 +66,7 @@ function formatProgressEvent(e: ProgressEvent): string {
 
 function generateViaStream(
   req: import('../shared/types').GenerateRequest,
-  onProgress: (message: string) => void,
+  onProgress: (event: { type: 'status' | 'thinking'; text: string }) => void,
 ): Promise<GenerateResponse> {
   return new Promise((resolve, reject) => {
     let resolved = false;
@@ -74,8 +75,12 @@ function generateViaStream(
     port.onMessage.addListener((msg: { type: string; event?: ProgressEvent; result?: GenerateResponse; error?: string }) => {
       if (resolved) return;
       if (msg.type === 'progress' && msg.event) {
-        const text = formatProgressEvent(msg.event);
-        if (text) onProgress(text);
+        if (msg.event.type === 'thinking' && msg.event.text) {
+          onProgress({ type: 'thinking', text: msg.event.text });
+        } else {
+          const text = formatProgressEvent(msg.event);
+          if (text) onProgress({ type: 'status', text });
+        }
       } else if (msg.type === 'done' && msg.result) {
         resolved = true;
         resolve(msg.result);
@@ -92,16 +97,8 @@ function generateViaStream(
       }
     });
 
-    // Get the active tab id to pass along
-    (async () => {
-      try {
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        port.postMessage({ type: 'START_STREAM', req, tabId: tab?.id });
-      } catch (e) {
-        resolved = true;
-        reject(e);
-      }
-    })();
+    // Background gets tabId from port.sender.tab.id automatically
+    port.postMessage({ type: 'START_STREAM', req });
   });
 }
 
@@ -129,7 +126,9 @@ initOverlay({
     // Try streaming via port for live progress
     if (onProgress) {
       try {
-        const result = await generateViaStream(req, onProgress);
+        const result = await generateViaStream(req, (event) => {
+          onProgress(event);
+        });
         return result;
       } catch (e) {
         console.warn('[bob] streaming failed, falling back to non-streaming:', e);

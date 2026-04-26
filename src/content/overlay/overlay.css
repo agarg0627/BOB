@@ -128,21 +128,6 @@
   cursor: progress;
 }
 
-.spinner {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  border: 1.5px solid rgba(245, 245, 245, 0.2);
-  border-top-color: #f5f5f5;
-  animation: bob-spin 0.8s linear infinite;
-  display: none;
-  flex: 0 0 auto;
-}
-
-.backdrop[data-state="loading"] .view-prompt .spinner {
-  display: block;
-}
-
 /* === Edit mode banner === */
 .edit-banner {
   display: flex;
@@ -636,6 +621,66 @@ textarea.prompt:disabled {
   overflow: hidden;
   text-overflow: ellipsis;
   animation: bob-progress-in 200ms ease-out;
+}
+
+/* === Thinking disclosure (high-effort mode) === */
+
+.thinking-disclosure {
+  display: none;
+}
+
+.backdrop[data-state="loading"] .thinking-disclosure:not([hidden]) {
+  display: block;
+}
+
+.thinking-disclosure[hidden] {
+  display: none;
+}
+
+.thinking-summary {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: rgba(139, 92, 246, 0.7);
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.thinking-summary::-webkit-details-marker {
+  display: none;
+}
+
+.thinking-summary::before {
+  content: '\25b6';
+  font-size: 8px;
+  transition: transform 150ms ease;
+}
+
+.thinking-disclosure[open] .thinking-summary::before {
+  transform: rotate(90deg);
+}
+
+.thinking-summary:hover {
+  color: rgba(139, 92, 246, 0.9);
+}
+
+.thinking-content {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(245, 245, 245, 0.4);
+  background: rgba(139, 92, 246, 0.05);
+  border: 1px solid rgba(139, 92, 246, 0.1);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-top: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 @keyframes bob-progress-in {

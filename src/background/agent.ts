@@ -74,6 +74,7 @@ export type AgentProgressEvent =
   | { type: 'iteration'; n: number; total: number }
   | { type: 'tool_call'; name: string; input: unknown }
   | { type: 'tool_result'; name: string; preview: string }
+  | { type: 'thinking'; text: string }
   | { type: 'final' };
 
 export type ProgressCallback = (e: AgentProgressEvent) => void;
@@ -135,6 +136,10 @@ export async function runAgent(
       model: settings.model,
       effortMode,
     });
+
+    if (turn.thinkingText) {
+      onProgress?.({ type: 'thinking', text: turn.thinkingText });
+    }
 
     if (turn.toolCalls && turn.toolCalls.length > 0) {
       // Append assistant turn with tool calls

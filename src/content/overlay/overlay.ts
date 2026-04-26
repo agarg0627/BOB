@@ -12,7 +12,7 @@ export interface OnGenerateOptions {
   signal?: AbortSignal;
   refinementHistory?: Array<{ role: 'user' | 'assistant'; content: string }>;
   effortMode?: 'standard' | 'high';
-  onProgress?: (message: string) => void;
+  onProgress?: (event: { type: 'status' | 'thinking'; text: string }) => void;
 }
 
 export interface OverlayCallbacks {
@@ -52,6 +52,8 @@ interface OverlayInstance {
   promptAction: HTMLButtonElement;
   promptActionLabel: HTMLSpanElement;
   progressLog: HTMLDivElement;
+  thinkingDisclosure: HTMLDetailsElement;
+  thinkingContent: HTMLDivElement;
   status: HTMLDivElement;
   preview: PreviewElements;
   state: State;
@@ -286,6 +288,30 @@ function showProgressMessage(text: string): void {
 function clearProgress(): void {
   if (!instance) return;
   instance.progressLog.replaceChildren();
+  clearThinking();
+}
+
+function appendThinking(text: string): void {
+  if (!instance) return;
+  const disc = instance.thinkingDisclosure;
+  const content = instance.thinkingContent;
+  // Show the disclosure element
+  disc.removeAttribute('hidden');
+  // Append text (each call may be a full thinking block from one iteration)
+  if (content.textContent) {
+    content.textContent += '\n\n' + text;
+  } else {
+    content.textContent = text;
+  }
+  // Auto-scroll to bottom
+  content.scrollTop = content.scrollHeight;
+}
+
+function clearThinking(): void {
+  if (!instance) return;
+  instance.thinkingDisclosure.setAttribute('hidden', '');
+  instance.thinkingDisclosure.removeAttribute('open');
+  instance.thinkingContent.textContent = '';
 }
 
 // ---- Actions ----
@@ -304,9 +330,13 @@ async function submitPrompt(): Promise<void> {
   const token = ++instance.requestToken;
 
   const effortMode = getEffortMode();
-  const progressCb = (message: string) => {
+  const progressCb = (event: { type: 'status' | 'thinking'; text: string }) => {
     if (!instance || instance.requestToken !== token) return;
-    showProgressMessage(message);
+    if (event.type === 'thinking') {
+      appendThinking(event.text);
+    } else {
+      showProgressMessage(event.text);
+    }
   };
   let options: OnGenerateOptions | undefined;
 
@@ -633,10 +663,6 @@ function buildOverlay(): OverlayInstance {
   input.placeholder = 'Describe what you want\u2026 (Cmd+Enter to submit)';
   input.setAttribute('aria-label', 'Prompt');
 
-  const spinner = document.createElement('div');
-  spinner.className = 'spinner';
-  spinner.setAttribute('aria-hidden', 'true');
-
   // Mic button (hidden if not supported)
   const micBtn = document.createElement('button');
   micBtn.type = 'button';
@@ -688,7 +714,6 @@ function buildOverlay(): OverlayInstance {
   });
 
   row.appendChild(input);
-  row.appendChild(spinner);
   row.appendChild(micBtn);
   row.appendChild(promptAction);
 
@@ -700,6 +725,18 @@ function buildOverlay(): OverlayInstance {
   // Progress log (shown during loading)
   const progressLog = document.createElement('div');
   progressLog.className = 'progress-log';
+
+  // Thinking disclosure (shown during loading in high-effort mode)
+  const thinkingDisclosure = document.createElement('details');
+  thinkingDisclosure.className = 'thinking-disclosure';
+  thinkingDisclosure.setAttribute('hidden', '');
+  const thinkingSummary = document.createElement('summary');
+  thinkingSummary.className = 'thinking-summary';
+  thinkingSummary.textContent = 'Model thinking';
+  const thinkingContent = document.createElement('div');
+  thinkingContent.className = 'thinking-content';
+  thinkingDisclosure.appendChild(thinkingSummary);
+  thinkingDisclosure.appendChild(thinkingContent);
 
   const status = document.createElement('div');
   status.className = 'status';
@@ -728,6 +765,7 @@ function buildOverlay(): OverlayInstance {
   promptView.appendChild(row);
   promptView.appendChild(chipsContainer);
   promptView.appendChild(progressLog);
+  promptView.appendChild(thinkingDisclosure);
   promptView.appendChild(status);
   promptView.appendChild(hint);
 
@@ -812,6 +850,8 @@ function buildOverlay(): OverlayInstance {
     promptAction,
     promptActionLabel,
     progressLog,
+    thinkingDisclosure,
+    thinkingContent,
     status,
     preview,
     state: 'closed',

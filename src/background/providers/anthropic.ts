@@ -10,6 +10,7 @@ interface AnthropicContentBlock {
   // message turn — they're only for the model's own reasoning.
   type: 'text' | 'tool_use' | 'thinking' | string;
   text?: string;
+  thinking?: string;
   id?: string;
   name?: string;
   input?: Record<string, unknown>;
@@ -118,10 +119,13 @@ export const anthropicProvider: Provider = {
     const blocks = data.content ?? [];
 
     let text = '';
+    let thinkingText = '';
     const toolCalls: ToolCall[] = [];
 
     for (const block of blocks) {
-      if (block.type === 'text' && block.text) {
+      if (block.type === 'thinking' && block.thinking) {
+        thinkingText += (thinkingText ? '\n' : '') + block.thinking;
+      } else if (block.type === 'text' && block.text) {
         text += block.text;
       } else if (block.type === 'tool_use' && block.id && block.name) {
         toolCalls.push({
@@ -133,10 +137,10 @@ export const anthropicProvider: Provider = {
     }
 
     if (toolCalls.length > 0) {
-      return { text: text || undefined, toolCalls, finishReason: 'tool_use' };
+      return { text: text || undefined, toolCalls, finishReason: 'tool_use', thinkingText: thinkingText || undefined };
     }
 
     const reason = data.stop_reason === 'max_tokens' ? 'length' : 'end';
-    return { text, finishReason: reason };
+    return { text, finishReason: reason, thinkingText: thinkingText || undefined };
   },
 };

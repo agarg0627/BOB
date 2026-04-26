@@ -9,6 +9,7 @@ function endpoint(model: string, apiKey: string): string {
 
 interface GeminiPart {
   text?: string;
+  thought?: boolean;
   functionCall?: { name: string; args: Record<string, unknown> };
   functionResponse?: { name: string; response: { content: string } };
 }
@@ -104,7 +105,7 @@ export const googleProvider: Provider = {
       const isGemma = (chosenModel || '').startsWith('gemma-');
       generationConfig.thinkingConfig = isGemma
         ? { thinkingLevel: 'high' }
-        : { includeThoughts: false, thinkingBudget: 8192 };
+        : { includeThoughts: true, thinkingBudget: 8192 };
     }
 
     const body: Record<string, unknown> = {
@@ -134,10 +135,13 @@ export const googleProvider: Provider = {
     const parts = candidate?.content?.parts ?? [];
 
     let text = '';
+    let thinkingText = '';
     const toolCalls: ToolCall[] = [];
 
     for (const part of parts) {
-      if (part.text) {
+      if (part.thought && part.text) {
+        thinkingText += (thinkingText ? '\n' : '') + part.text;
+      } else if (part.text) {
         text += part.text;
       } else if (part.functionCall) {
         toolCalls.push({
@@ -149,10 +153,10 @@ export const googleProvider: Provider = {
     }
 
     if (toolCalls.length > 0) {
-      return { text: text || undefined, toolCalls, finishReason: 'tool_use' };
+      return { text: text || undefined, toolCalls, finishReason: 'tool_use', thinkingText: thinkingText || undefined };
     }
 
     const reason = candidate?.finishReason === 'MAX_TOKENS' ? 'length' : 'end';
-    return { text, finishReason: reason };
+    return { text, finishReason: reason, thinkingText: thinkingText || undefined };
   },
 };

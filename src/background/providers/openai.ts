@@ -84,6 +84,8 @@ export const openaiProvider: Provider = {
     // reasoning_effort is currently honoured by gpt-5.x reasoning models.
     // Older / non-reasoning models reject the param, so we silently drop
     // it when the chosen model isn't gpt-5*.
+    // Note: OpenAI reasoning models do not expose their reasoning/thinking
+    // text in the API response, so thinkingText is never returned here.
     if (effortMode === 'high' && /^gpt-5/i.test(chosenModel)) {
       body.reasoning_effort = 'high';
     }

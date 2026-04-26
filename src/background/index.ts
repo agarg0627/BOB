@@ -313,9 +313,18 @@ chrome.runtime.onMessage.addListener(
 chrome.runtime.onConnect.addListener((port) => {
   if (!port.name.startsWith('bob-stream-')) return;
 
-  port.onMessage.addListener((msg: { type: string; req?: GenerateRequest; tabId?: number }) => {
+  const tabId = port.sender?.tab?.id;
+
+  port.onMessage.addListener((msg: { type: string; req?: GenerateRequest }) => {
     if (msg.type !== 'START_STREAM' || !msg.req) return;
-    const req = { ...msg.req, tabId: msg.tabId };
+
+    if (tabId === undefined) {
+      try { port.postMessage({ type: 'error', error: 'no tab id from port sender' }); } catch { /* port closed */ }
+      try { port.disconnect(); } catch { /* already disconnected */ }
+      return;
+    }
+
+    const req = { ...msg.req, tabId };
 
     (async () => {
       try {

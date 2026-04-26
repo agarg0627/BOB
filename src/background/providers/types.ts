@@ -14,6 +14,7 @@ export interface ProviderTurnResponse {
   text?: string;
   toolCalls?: ToolCall[];
   finishReason: 'end' | 'tool_use' | 'length' | 'error';
+  thinkingText?: string;
 }
 
 export interface ToolDefinition {
