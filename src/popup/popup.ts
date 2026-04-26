@@ -2,7 +2,7 @@
 // + suggestions + status surface.
 import type { Feature, Suggestion } from '../shared/types';
 import { startEdit, maybeReloadActiveTab, patternMatchesUrl } from './iteration';
-import { exportFeatures, importFeatures } from './import-export';
+import { exportSingleFeature } from './import-export';
 
 const root = document.getElementById('root')!;
 const toastEl = document.getElementById('toast') as HTMLDivElement | null;
@@ -277,6 +277,30 @@ function pencilIcon(): SVGSVGElement {
   return svg;
 }
 
+function downloadIcon(): SVGSVGElement {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '1.8');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  svg.setAttribute('aria-hidden', 'true');
+  const path1 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path1.setAttribute('d', 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4');
+  svg.appendChild(path1);
+  const path2 = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+  path2.setAttribute('points', '7 10 12 15 17 10');
+  svg.appendChild(path2);
+  const path3 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+  path3.setAttribute('x1', '12');
+  path3.setAttribute('y1', '15');
+  path3.setAttribute('x2', '12');
+  path3.setAttribute('y2', '3');
+  svg.appendChild(path3);
+  return svg;
+}
+
 function buildCard(f: Feature): HTMLElement {
   const cardState = cardStateFor(f);
   const card = el('article', {
@@ -313,7 +337,19 @@ function buildCard(f: Feature): HTMLElement {
   });
   editBtn.appendChild(pencilIcon());
 
+  const exportBtn = el('button', {
+    className: 'icon-btn',
+    attrs: {
+      type: 'button',
+      'aria-label': 'Export feature',
+      title: 'Export',
+    },
+    dataset: { action: 'export-single' },
+  });
+  exportBtn.appendChild(downloadIcon());
+
   const actions = el('div', { className: 'card-actions' }, [
+    exportBtn,
     editBtn,
     (() => {
       const t = el('button', {
@@ -545,10 +581,6 @@ function render(): void {
   }
 
   root.appendChild(body);
-
-  // Import / Export section (always shown if there are features or after import)
-  const backup = buildBackupSection();
-  root.appendChild(backup);
 }
 
 function buildEmptyState(): HTMLElement {
@@ -755,6 +787,15 @@ async function copyError(id: string): Promise<void> {
   }
 }
 
+async function handleExportSingle(id: string): Promise<void> {
+  try {
+    await exportSingleFeature(id);
+    showToast('Exported');
+  } catch (e) {
+    showToast((e as Error).message || 'Export failed');
+  }
+}
+
 async function laterSuggestion(id: string): Promise<void> {
   await dismissSuggestion(id);
   render();
@@ -766,94 +807,6 @@ async function neverSuggestion(id: string): Promise<void> {
   await dismissSuggestion(id);
   render();
   showToast('Dismissed permanently');
-}
-
-function buildBackupSection(): HTMLElement {
-  const section = el('div', { className: 'backup-section' });
-  const heading = el('div', { className: 'backup-heading', text: 'Backup & Restore' });
-
-  const actions = el('div', { className: 'backup-actions' });
-
-  const exportBtn = el('button', {
-    className: 'backup-btn',
-    text: 'Export features',
-    attrs: { type: 'button' },
-    dataset: { action: 'export-features' },
-  });
-
-  const importBtn = el('button', {
-    className: 'backup-btn',
-    text: 'Import features',
-    attrs: { type: 'button' },
-    dataset: { action: 'import-trigger' },
-  });
-
-  const fileInput = document.createElement('input');
-  fileInput.type = 'file';
-  fileInput.accept = '.json';
-  fileInput.className = 'import-input';
-
-  const importMode = el('div', { className: 'import-mode', attrs: { hidden: '' } }, [
-    el('button', {
-      className: 'import-mode-btn',
-      text: 'Merge with existing',
-      attrs: { type: 'button' },
-      dataset: { action: 'import-merge' },
-    }),
-    el('button', {
-      className: 'import-mode-btn',
-      text: 'Replace all',
-      attrs: { type: 'button' },
-      dataset: { action: 'import-replace' },
-    }),
-  ]);
-
-  let pendingFile: File | null = null;
-
-  fileInput.addEventListener('change', () => {
-    const file = fileInput.files?.[0];
-    if (!file) return;
-    pendingFile = file;
-    importMode.removeAttribute('hidden');
-  });
-
-  importBtn.addEventListener('click', () => {
-    fileInput.click();
-  });
-
-  const doImport = async (mode: 'merge' | 'replace') => {
-    if (!pendingFile) return;
-    try {
-      const result = await importFeatures(pendingFile, mode);
-      pendingFile = null;
-      importMode.setAttribute('hidden', '');
-      await refreshFromBackend();
-      render();
-      showToast(`Imported ${result.count} feature${result.count === 1 ? '' : 's'}`);
-    } catch (e) {
-      showToast((e as Error).message || 'Import failed');
-    }
-  };
-
-  importMode.querySelector('[data-action="import-merge"]')?.addEventListener('click', () => void doImport('merge'));
-  importMode.querySelector('[data-action="import-replace"]')?.addEventListener('click', () => void doImport('replace'));
-
-  exportBtn.addEventListener('click', async () => {
-    try {
-      await exportFeatures();
-      showToast('Exported');
-    } catch (e) {
-      showToast((e as Error).message || 'Export failed');
-    }
-  });
-
-  actions.appendChild(exportBtn);
-  actions.appendChild(importBtn);
-  actions.appendChild(fileInput);
-  section.appendChild(heading);
-  section.appendChild(actions);
-  section.appendChild(importMode);
-  return section;
 }
 
 function openOptions(): void {
@@ -937,6 +890,9 @@ root.addEventListener('click', (e) => {
       break;
     case 'copy-error':
       void copyError(id);
+      break;
+    case 'export-single':
+      void handleExportSingle(id);
       break;
   }
 });

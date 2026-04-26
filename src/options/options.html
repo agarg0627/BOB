@@ -120,6 +120,7 @@
           <label for="model">Model override (optional)</label>
           <input type="text" id="model" autocomplete="off" spellcheck="false" placeholder="" />
           <p class="hint">Leave blank to use the provider's default.</p>
+          <p class="hint" id="model-hint" hidden></p>
         </section>
 
         <div class="actions">
@@ -129,11 +130,28 @@
       </form>
     </main>
 
+    <section class="card backup-card">
+      <h2>Backup & Restore</h2>
+      <p class="subtitle">Export your features to a JSON file, or import from a previously exported file.</p>
+      <div class="backup-actions">
+        <button type="button" id="export-btn" class="backup-btn">Export all features</button>
+        <button type="button" id="import-btn" class="backup-btn">Import features</button>
+        <input type="file" id="import-file" accept=".json" hidden />
+      </div>
+      <div class="import-mode" id="import-mode" hidden>
+        <button type="button" id="import-merge" class="backup-btn">Merge with existing</button>
+        <button type="button" id="import-replace" class="backup-btn">Replace all</button>
+      </div>
+      <span id="backup-status" class="status" role="status" aria-live="polite"></span>
+    </section>
+
     <section class="card demo-card">
       <h2>Developer & Demo</h2>
       <p class="subtitle">Load sample features to explore BOB's capabilities.</p>
-      <button type="button" id="load-demos" class="primary">Load demo features</button>
-      <span id="demo-status" class="status" role="status" aria-live="polite"></span>
+      <div class="demo-actions">
+        <button type="button" id="load-demos" class="primary">Load demo features</button>
+        <span id="demo-status" class="status" role="status" aria-live="polite"></span>
+      </div>
     </section>
 
     <script type="module" src="./options.ts"></script>

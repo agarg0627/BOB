@@ -3,6 +3,7 @@ import { getSettings, setSettings } from '../background/settings';
 import { anthropicProvider } from '../background/providers/anthropic';
 import { openaiProvider } from '../background/providers/openai';
 import { googleProvider } from '../background/providers/google';
+import { exportFeatures, importFeatures } from '../popup/import-export';
 
 const PROVIDER_DEFAULTS: Record<LLMProvider, string> = {
   anthropic: anthropicProvider.defaultModel,
@@ -40,8 +41,26 @@ function selectedProvider(): LLMProvider {
   return (checked?.value as LLMProvider) || 'anthropic';
 }
 
+const MODEL_PLACEHOLDERS: Record<LLMProvider, string> = {
+  anthropic: PROVIDER_DEFAULTS.anthropic,
+  openai: PROVIDER_DEFAULTS.openai,
+  google: 'gemini-3.1-pro-preview · gemma-4-31b-it · gemma-4-26b-a4b-it',
+};
+
+const modelHintEl = document.getElementById('model-hint') as HTMLParagraphElement | null;
+
 function updateModelPlaceholder(): void {
-  modelInput.placeholder = PROVIDER_DEFAULTS[selectedProvider()];
+  const provider = selectedProvider();
+  modelInput.placeholder = MODEL_PLACEHOLDERS[provider];
+  if (modelHintEl) {
+    if (provider === 'google') {
+      modelHintEl.textContent =
+        'Gemma 4 models run via Gemini API and use the same key. gemma-4-31b-it is recommended for quality.';
+      modelHintEl.hidden = false;
+    } else {
+      modelHintEl.hidden = true;
+    }
+  }
 }
 
 function validateKey(provider: LLMProvider): void {
@@ -275,5 +294,59 @@ async function loadDemos(): Promise<void> {
 }
 
 loadDemosBtn?.addEventListener('click', () => void loadDemos());
+
+// ---- Backup & Restore ----
+
+const exportBtn = document.getElementById('export-btn') as HTMLButtonElement | null;
+const importBtn = document.getElementById('import-btn') as HTMLButtonElement | null;
+const importFileInput = document.getElementById('import-file') as HTMLInputElement | null;
+const importModeEl = document.getElementById('import-mode') as HTMLDivElement | null;
+const importMergeBtn = document.getElementById('import-merge') as HTMLButtonElement | null;
+const importReplaceBtn = document.getElementById('import-replace') as HTMLButtonElement | null;
+const backupStatusEl = document.getElementById('backup-status') as HTMLSpanElement | null;
+
+let pendingFile: File | null = null;
+
+function showBackupStatus(message: string, kind: 'ok' | 'error'): void {
+  if (!backupStatusEl) return;
+  backupStatusEl.textContent = message;
+  backupStatusEl.classList.remove('status-ok', 'status-error');
+  backupStatusEl.classList.add(kind === 'ok' ? 'status-ok' : 'status-error');
+}
+
+exportBtn?.addEventListener('click', async () => {
+  try {
+    await exportFeatures();
+    showBackupStatus('Exported.', 'ok');
+  } catch (e) {
+    showBackupStatus((e as Error).message || 'Export failed.', 'error');
+  }
+});
+
+importBtn?.addEventListener('click', () => {
+  importFileInput?.click();
+});
+
+importFileInput?.addEventListener('change', () => {
+  const file = importFileInput.files?.[0];
+  if (!file) return;
+  pendingFile = file;
+  importModeEl?.removeAttribute('hidden');
+});
+
+async function doImport(mode: 'merge' | 'replace'): Promise<void> {
+  if (!pendingFile) return;
+  try {
+    const result = await importFeatures(pendingFile, mode);
+    pendingFile = null;
+    importModeEl?.setAttribute('hidden', '');
+    showBackupStatus(`Imported ${result.count} feature${result.count === 1 ? '' : 's'}.`, 'ok');
+  } catch (e) {
+    showBackupStatus((e as Error).message || 'Import failed.', 'error');
+  }
+}
+
+importMergeBtn?.addEventListener('click', () => void doImport('merge'));
+importReplaceBtn?.addEventListener('click', () => void doImport('replace'));
 
 void init();

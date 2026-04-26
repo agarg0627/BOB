@@ -37,6 +37,41 @@ export async function exportFeatures(): Promise<void> {
   URL.revokeObjectURL(url);
 }
 
+export async function exportSingleFeature(featureId: string): Promise<void> {
+  let features: Feature[] = [];
+  try {
+    const res = await chrome.runtime.sendMessage({ type: 'LIST_FEATURES' });
+    if (Array.isArray(res)) features = res;
+  } catch {
+    throw new Error('Could not load features');
+  }
+
+  const feature = features.find((f) => f.id === featureId);
+  if (!feature) throw new Error('Feature not found');
+
+  const payload: ExportPayload = {
+    version: 1,
+    exportedAt: Date.now(),
+    features: [feature],
+  };
+
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {
+    type: 'application/json',
+  });
+  const url = URL.createObjectURL(blob);
+  const safeName = feature.name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `bob-feature-${safeName}-${Date.now()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export async function importFeatures(
   file: File,
   mode: 'merge' | 'replace',

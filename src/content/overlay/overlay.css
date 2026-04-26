@@ -29,7 +29,8 @@
 .backdrop[data-state="open"],
 .backdrop[data-state="loading"],
 .backdrop[data-state="preview"],
-.backdrop[data-state="installing"] {
+.backdrop[data-state="installing"],
+.backdrop[data-state="refine"] {
   opacity: 1;
   pointer-events: auto;
 }
@@ -54,7 +55,8 @@
 .backdrop[data-state="open"] .modal,
 .backdrop[data-state="loading"] .modal,
 .backdrop[data-state="preview"] .modal,
-.backdrop[data-state="installing"] .modal {
+.backdrop[data-state="installing"] .modal,
+.backdrop[data-state="refine"] .modal {
   transform: translateY(0);
 }
 
@@ -201,7 +203,7 @@
 .prompt-action {
   flex: 0 0 auto;
   font-size: 12.5px;
-  padding: 6px 12px;
+  padding: 5px 14px;
 }
 
 .backdrop[data-state="preview"] .prompt-action,
@@ -233,18 +235,15 @@
   font-size: 11px;
   color: rgba(245, 245, 245, 0.4);
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   user-select: none;
 }
 
 kbd {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 10.5px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
-  padding: 1px 5px;
-  color: rgba(245, 245, 245, 0.7);
+  font-weight: 600;
+  color: rgba(245, 245, 245, 0.5);
 }
 
 /* === Preview view === */
@@ -480,15 +479,16 @@ kbd {
 textarea.prompt {
   flex: 1;
   background: transparent;
-  border: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
   outline: 0;
   color: #f5f5f5;
   font: inherit;
   font-size: 15px;
-  padding: 6px 2px;
+  padding: 10px 12px;
   caret-color: #f5f5f5;
   resize: none;
-  min-height: 44px;
+  min-height: 52px;
   max-height: 140px;
   overflow-y: auto;
   white-space: pre-wrap;
@@ -498,6 +498,10 @@ textarea.prompt {
 
 textarea.prompt::placeholder {
   color: rgba(245, 245, 245, 0.45);
+}
+
+textarea.prompt:focus {
+  border-color: rgba(255, 255, 255, 0.1);
 }
 
 textarea.prompt:disabled {
@@ -519,31 +523,28 @@ textarea.prompt:disabled {
 
 .chip {
   background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 16px;
+  border: none;
+  border-radius: 6px;
   color: rgba(245, 245, 245, 0.7);
   font: inherit;
   font-size: 12px;
   padding: 5px 12px;
   cursor: pointer;
-  transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+  transition: background 150ms ease, color 150ms ease;
 }
 
 .chip:hover {
   background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.2);
   color: #f5f5f5;
 }
 
 .chip-done {
   background: rgba(46, 160, 67, 0.15);
-  border-color: rgba(46, 160, 67, 0.3);
   color: #5fd87f;
 }
 
 .chip-done:hover {
   background: rgba(46, 160, 67, 0.25);
-  border-color: rgba(46, 160, 67, 0.5);
   color: #7ae89a;
 }
 
@@ -554,7 +555,7 @@ textarea.prompt:disabled {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: none;
   background: transparent;
   color: rgba(245, 245, 245, 0.6);
   font-size: 16px;
@@ -568,7 +569,6 @@ textarea.prompt:disabled {
 
 .mic-btn:hover {
   background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.2);
   color: #f5f5f5;
 }
 

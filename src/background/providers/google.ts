@@ -96,14 +96,15 @@ export const googleProvider: Provider = {
     const generationConfig: Record<string, unknown> = {
       maxOutputTokens: 4096,
     };
-    // thinkingConfig is honoured by Gemini 2.5+/3.x reasoning-capable
-    // models. We emit it only for high-effort runs; standard mode omits
-    // the field so models that don't recognise it are unaffected.
+    // Gemma 4 and Gemini 3.x both run via Generative Language API
+    // but use slightly different thinking config shapes. Gemma uses
+    // thinkingLevel ('high'/'low'/'off' string); Gemini uses
+    // thinkingBudget (numeric token budget).
     if (effortMode === 'high') {
-      generationConfig.thinkingConfig = {
-        includeThoughts: false,
-        thinkingBudget: 8192,
-      };
+      const isGemma = (chosenModel || '').startsWith('gemma-');
+      generationConfig.thinkingConfig = isGemma
+        ? { thinkingLevel: 'high' }
+        : { includeThoughts: false, thinkingBudget: 8192 };
     }
 
     const body: Record<string, unknown> = {

@@ -181,6 +181,10 @@ function setState(next: State): void {
     instance.promptAction.classList.add('stop');
     instance.promptActionLabel.textContent = 'Stop';
     instance.promptAction.setAttribute('aria-label', 'Stop generation');
+  } else if (next === 'refine') {
+    instance.promptAction.classList.remove('stop');
+    instance.promptActionLabel.textContent = 'Refine';
+    instance.promptAction.setAttribute('aria-label', 'Refine');
   } else {
     instance.promptAction.classList.remove('stop');
     instance.promptActionLabel.textContent = 'Generate';
@@ -277,11 +281,15 @@ async function submitPrompt(): Promise<void> {
   if (wasRefining && instance.installedFeatureId) {
     // Refinement: pass existing code and history
     instance.refinementHistory.push({ role: 'user', content: value });
+    // Cap refinement history at last 6 entries to keep prompts under context limits
+    const cappedHistory = instance.refinementHistory.length > 6
+      ? instance.refinementHistory.slice(-6)
+      : [...instance.refinementHistory];
     options = {
       existingCode: instance.installedCode,
       existingFeatureName: instance.installedFeatureName,
       parentFeatureId: instance.installedFeatureId,
-      refinementHistory: [...instance.refinementHistory],
+      refinementHistory: cappedHistory,
       effortMode: effortMode !== 'standard' ? effortMode : undefined,
     };
   } else if (instance.editing) {
@@ -399,12 +407,16 @@ async function install(): Promise<void> {
 
       if (installedId) {
         // Transition to refine state
+        const wasRefinement = isRefinement;
         setRefineMode(installedId, editedName, installedCode);
         instance.input.value = '';
         autoGrow();
         instance.input.placeholder = 'Refine this feature\u2026 (Cmd+Enter to submit)';
         setState('refine');
         requestAnimationFrame(() => instance?.input.focus());
+        if (wasRefinement) {
+          showToast(`Refined: ${editedName}`);
+        }
       } else {
         // No id returned — close with toast (legacy behavior)
         const verb = editing ? 'Updated' : 'Installed';
@@ -565,7 +577,7 @@ function buildOverlay(): OverlayInstance {
 
   const effortLabelText = document.createElement('span');
   effortLabelText.className = 'effort-label';
-  effortLabelText.textContent = 'High effort \u26a1';
+  effortLabelText.textContent = 'High effort';
 
   effortLabel.appendChild(effortCheckbox);
   effortLabel.appendChild(effortSlider);
@@ -594,7 +606,32 @@ function buildOverlay(): OverlayInstance {
   micBtn.className = 'mic-btn';
   micBtn.setAttribute('aria-label', 'Voice input');
   micBtn.title = 'Voice input';
-  micBtn.textContent = '\ud83c\udfa4';
+  const micSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  micSvg.setAttribute('width', '16');
+  micSvg.setAttribute('height', '16');
+  micSvg.setAttribute('viewBox', '0 0 24 24');
+  micSvg.setAttribute('fill', 'none');
+  micSvg.setAttribute('stroke', 'currentColor');
+  micSvg.setAttribute('stroke-width', '2');
+  micSvg.setAttribute('stroke-linecap', 'round');
+  micSvg.setAttribute('stroke-linejoin', 'round');
+  const micPath1 = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  micPath1.setAttribute('x', '9');
+  micPath1.setAttribute('y', '2');
+  micPath1.setAttribute('width', '6');
+  micPath1.setAttribute('height', '12');
+  micPath1.setAttribute('rx', '3');
+  const micPath2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  micPath2.setAttribute('d', 'M5 10a7 7 0 0 0 14 0');
+  const micPath3 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+  micPath3.setAttribute('x1', '12');
+  micPath3.setAttribute('y1', '17');
+  micPath3.setAttribute('x2', '12');
+  micPath3.setAttribute('y2', '22');
+  micSvg.appendChild(micPath1);
+  micSvg.appendChild(micPath2);
+  micSvg.appendChild(micPath3);
+  micBtn.appendChild(micSvg);
   if (!isVoiceSupported()) {
     micBtn.style.display = 'none';
   }
@@ -631,7 +668,7 @@ function buildOverlay(): OverlayInstance {
   const hint = document.createElement('div');
   hint.className = 'hint';
   const left = document.createElement('span');
-  left.textContent = 'BOB';
+  left.textContent = '';
   const right = document.createElement('span');
   const cmdKbd = document.createElement('kbd');
   cmdKbd.textContent = '\u2318Enter';
