@@ -1,8 +1,11 @@
 // Owned by Person D. Popup UI: feature list + bulk actions + iteration entry
 // + suggestions + status surface.
 import type { Feature, Suggestion } from '../shared/types';
+import { applyUiScale } from '../shared/ui-scale';
 import { startEdit, maybeReloadActiveTab, patternMatchesUrl } from './iteration';
 import { exportSingleFeature } from './import-export';
+
+applyUiScale();
 
 const root = document.getElementById('root')!;
 const toastEl = document.getElementById('toast') as HTMLDivElement | null;

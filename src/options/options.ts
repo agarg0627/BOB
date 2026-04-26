@@ -1,9 +1,12 @@
 import type { ExtensionSettings, LLMProvider } from '../shared/types';
+import { applyUiScale } from '../shared/ui-scale';
 import { getSettings, setSettings } from '../background/settings';
 import { anthropicProvider } from '../background/providers/anthropic';
 import { openaiProvider } from '../background/providers/openai';
 import { googleProvider } from '../background/providers/google';
 import { exportFeatures, importFeatures } from '../popup/import-export';
+
+applyUiScale();
 
 const PROVIDER_DEFAULTS: Record<LLMProvider, string> = {
   anthropic: anthropicProvider.defaultModel,
