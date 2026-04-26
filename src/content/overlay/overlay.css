@@ -50,7 +50,7 @@
   transition: transform 150ms ease-out;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .backdrop[data-state="open"] .modal,
@@ -309,7 +309,7 @@ kbd {
   font-size: 11px;
   line-height: 1.6;
   color: rgba(245, 245, 245, 0.85);
-  z-index: 10;
+  z-index: 100;
   display: none;
 }
 .kbd-help-popover[data-open="true"] {

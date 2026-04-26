@@ -12,8 +12,4 @@ export function applyUiScale(): void {
   // which keeps the original layout box and breaks click targets.
   (document.documentElement.style as CSSStyleDeclaration & { zoom?: string }).zoom =
     String(scale);
-  // eslint-disable-next-line no-console
-  console.debug(
-    `[BOB] ui-scale: screen.width=${screenWidth} dpr=${window.devicePixelRatio} → zoom=${scale.toFixed(3)}`,
-  );
 }

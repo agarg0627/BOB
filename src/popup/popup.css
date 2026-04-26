@@ -375,6 +375,9 @@ button {
   font-size: 10.5px;
   color: var(--fg);
   cursor: pointer;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
 }
 .hotkey-input::placeholder {
   color: var(--fg-faint);

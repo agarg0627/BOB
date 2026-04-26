@@ -156,7 +156,13 @@ function wireRevealButtons(): void {
 
 function wireProviderRadios(): void {
   form.querySelectorAll<HTMLInputElement>('input[name="provider"]').forEach((radio) => {
-    radio.addEventListener('change', updateModelPlaceholder);
+    radio.addEventListener('change', () => {
+      // The model override is a single shared field. Carrying e.g.
+      // "claude-opus-4-7" into OpenAI silently breaks generation — clear
+      // it so the new provider's default placeholder applies on Save.
+      modelInput.value = '';
+      updateModelPlaceholder();
+    });
   });
 }
 
@@ -479,8 +485,27 @@ const demoStatusEl = document.getElementById('demo-status') as HTMLSpanElement |
 async function loadDemos(): Promise<void> {
   if (!loadDemosBtn) return;
   loadDemosBtn.disabled = true;
-  let count = 0;
+  // Skip demos already installed (by name) so a second click after a page
+  // reload doesn't pile up duplicates and break the demo for a presenter.
+  const existingNames = new Set<string>();
+  try {
+    const existing = await chrome.runtime.sendMessage({ type: 'LIST_FEATURES' });
+    if (Array.isArray(existing)) {
+      for (const f of existing) {
+        if (f && typeof f.name === 'string') existingNames.add(f.name);
+      }
+    }
+  } catch {
+    // If LIST_FEATURES fails we still install — duplicates are recoverable;
+    // a missing demo set isn't.
+  }
+  let installed = 0;
+  let skipped = 0;
   for (const demo of DEMO_FEATURES) {
+    if (existingNames.has(demo.name)) {
+      skipped++;
+      continue;
+    }
     try {
       await chrome.runtime.sendMessage({
         type: 'INSTALL_FEATURE',
@@ -491,13 +516,15 @@ async function loadDemos(): Promise<void> {
           errorCount: 0,
         },
       });
-      count++;
+      installed++;
     } catch {
       // skip individual failures
     }
   }
   if (demoStatusEl) {
-    demoStatusEl.textContent = `Loaded ${count} demo features.`;
+    const parts = [`Loaded ${installed} demo features.`];
+    if (skipped > 0) parts.push(`${skipped} already present.`);
+    demoStatusEl.textContent = parts.join(' ');
     demoStatusEl.classList.add('status-ok');
   }
 }

@@ -414,7 +414,7 @@ function buildParentLine(f: Feature): HTMLElement | null {
 // row explains what the shortcut actually does, to avoid the bare-
 // "Hotkey:" mystery.
 function buildHotkeyRow(f: Feature): HTMLElement {
-  const PLACEHOLDER_IDLE = 'click here, then press a combo';
+  const PLACEHOLDER_IDLE = 'click, then press a combo';
   const PLACEHOLDER_CAPTURING = 'press a combo…';
 
   const input = document.createElement('input');

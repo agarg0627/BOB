@@ -942,6 +942,13 @@ function buildOverlay(): OverlayInstance {
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
+        // If the keyboard-help popover is open, Esc dismisses it first
+        // instead of closing the whole overlay — so a user who just
+        // opened "?" can back out without losing their prompt draft.
+        if (helpPopover.dataset.open === 'true') {
+          setHelpOpen(false);
+          return;
+        }
         closeOverlay();
         return;
       }
