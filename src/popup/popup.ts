@@ -1,10 +1,13 @@
 // Owned by Person D. Popup UI: feature list + bulk actions + iteration entry
 // + suggestions + status surface.
 import type { ExtensionSettings, Feature, KeybindSettings, Suggestion } from '../shared/types';
+import { applyUiScale } from '../shared/ui-scale';
 import { startEdit, maybeReloadActiveTab, patternMatchesUrl } from './iteration';
 import { exportSingleFeature } from './import-export';
 import { eventToHotkey } from '../shared/hotkey';
 import { findConflict, type OtherBinding } from '../shared/keybind-conflicts';
+
+applyUiScale();
 
 const root = document.getElementById('root')!;
 const toastEl = document.getElementById('toast') as HTMLDivElement | null;
@@ -411,7 +414,7 @@ function buildParentLine(f: Feature): HTMLElement | null {
 // row explains what the shortcut actually does, to avoid the bare-
 // "Hotkey:" mystery.
 function buildHotkeyRow(f: Feature): HTMLElement {
-  const PLACEHOLDER_IDLE = 'click here, then press a combo';
+  const PLACEHOLDER_IDLE = 'click, then press a combo';
   const PLACEHOLDER_CAPTURING = 'press a combo…';
 
   const input = document.createElement('input');
