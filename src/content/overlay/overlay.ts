@@ -1,7 +1,8 @@
 import overlayCss from './overlay.css?inline';
-import type { Feature, GenerateResponse } from '../../shared/types';
+import type { Feature, GenerateResponse, KeybindSettings } from '../../shared/types';
 import { buildPreviewView, populatePreview, showToast, type PreviewElements } from './preview';
 import { isVoiceSupported, startVoiceInput } from '../voice-input';
+import { eventToHotkey } from '../../shared/hotkey';
 
 // ---- Public types ----
 
@@ -27,6 +28,9 @@ export interface OverlayCallbacks {
       iterationNumber?: number;
     },
   ) => Promise<{ id: string } | void>;
+  // Optional: returns up to N most-recent userPrompts (deduped, newest
+  // first) to render as recent-prompt chips in the empty 'open' state.
+  onLoadRecentPrompts?: () => Promise<string[]>;
 }
 
 type State = 'closed' | 'open' | 'loading' | 'preview' | 'installing' | 'refine';
@@ -48,7 +52,10 @@ interface OverlayInstance {
   micBtn: HTMLButtonElement;
   effortCheckbox: HTMLInputElement;
   refineBanner: HTMLDivElement;
+  refineBannerLabel: HTMLSpanElement;
   refineBannerName: HTMLSpanElement;
+  helpBtn: HTMLButtonElement;
+  helpPopover: HTMLDivElement;
   promptAction: HTMLButtonElement;
   promptActionLabel: HTMLSpanElement;
   progressLog: HTMLDivElement;
@@ -68,6 +75,13 @@ interface OverlayInstance {
   installedFeatureId: string | null;
   installedFeatureName: string;
   installedCode: string;
+  // 'edit' = entered via Edit button (banner reads "Editing:");
+  // 'refine' = entered after a fresh install (banner reads "Installed ✓").
+  // Functionally identical refine state, only the banner copy differs.
+  entryMode: 'edit' | 'refine';
+  // Most-recent userPrompts cached at openOverlay time. Rendered as
+  // chips ahead of INITIAL_CHIPS when input is empty.
+  recentPrompts: string[];
   // Voice
   stopVoice: (() => void) | null;
 }
@@ -96,6 +110,49 @@ const REFINE_CHIPS = [
 let instance: OverlayInstance | null = null;
 let callbacks: OverlayCallbacks | null = null;
 let keydownAttached = false;
+
+// Configured keybinds. Defaults match background/settings.ts so the
+// overlay still toggles on Cmd+K before the content script has had a
+// chance to load and forward the user's settings.
+const DEFAULT_KEYBINDS: KeybindSettings = {
+  overlay: 'Ctrl+K',
+  refineLast: 'Ctrl+I',
+  quickToggle: 'Ctrl+Shift+Y',
+};
+let cachedKeybinds: KeybindSettings = { ...DEFAULT_KEYBINDS };
+
+export function setOverlayKeybinds(next: Partial<KeybindSettings>): void {
+  cachedKeybinds = {
+    overlay: next.overlay || DEFAULT_KEYBINDS.overlay,
+    refineLast: next.refineLast || DEFAULT_KEYBINDS.refineLast,
+    quickToggle: next.quickToggle || DEFAULT_KEYBINDS.quickToggle,
+  };
+  refreshKbdHelp();
+}
+
+// Render the keyboard-shortcuts popover from the current cached
+// keybinds. Called on overlay build and again whenever keybinds change.
+function refreshKbdHelp(): void {
+  if (!instance) return;
+  const dl = instance.helpPopover.querySelector('dl');
+  if (!dl) return;
+  const items: Array<[string, string]> = [
+    [cachedKeybinds.overlay, 'Open / close BOB'],
+    ['Ctrl+Enter', 'Submit'],
+    ['Esc', 'Close'],
+    [cachedKeybinds.refineLast, 'Refine last feature for this site'],
+    [cachedKeybinds.quickToggle, 'Quick-toggle bar'],
+  ];
+  dl.replaceChildren();
+  for (const [k, v] of items) {
+    const dt = document.createElement('dt');
+    dt.textContent = k;
+    const dd = document.createElement('dd');
+    dd.textContent = v;
+    dl.appendChild(dt);
+    dl.appendChild(dd);
+  }
+}
 
 // ---- Effort mode ----
 
@@ -126,49 +183,98 @@ function autoGrow(): void {
 
 // ---- Chip management ----
 
+const RECENT_CHIP_MAX_LEN = 28;
+
+interface ChipDescriptor {
+  text: string;       // what to fill into the input on click
+  display: string;    // truncated label rendered on the chip
+  tooltip?: string;   // full text for the title attribute
+  variant: 'static' | 'recent' | 'done';
+}
+
+function makeChip(d: ChipDescriptor): HTMLButtonElement {
+  const chip = document.createElement('button');
+  chip.type = 'button';
+  chip.className = 'chip';
+  if (d.variant === 'done') chip.classList.add('chip-done');
+  if (d.variant === 'recent') chip.classList.add('chip-recent');
+  chip.textContent = d.display;
+  if (d.tooltip) chip.title = d.tooltip;
+  chip.addEventListener('click', () => {
+    if (!instance) return;
+    if (d.variant === 'done') {
+      closeOverlay();
+      return;
+    }
+    instance.input.value = d.text;
+    instance.input.focus();
+    autoGrow();
+    updateChips();
+  });
+  return chip;
+}
+
 function updateChips(): void {
   if (!instance) return;
   const container = instance.chipsContainer;
   container.replaceChildren();
 
-  let chipList: string[] | null = null;
+  let descriptors: ChipDescriptor[] = [];
 
   if (instance.state === 'refine') {
-    chipList = instance.refinementCount >= 3
+    const list = instance.refinementCount >= 3
       ? [...REFINE_CHIPS, 'Done']
       : REFINE_CHIPS;
+    descriptors = list.map((t) => ({
+      text: t,
+      display: t,
+      variant: t === 'Done' ? 'done' : 'static',
+    }));
   } else if (
-    (instance.state === 'open') &&
+    instance.state === 'open' &&
     instance.input.value.length === 0
   ) {
-    chipList = INITIAL_CHIPS;
+    // Recent prompts first (already deduped + capped by the loader).
+    for (const p of instance.recentPrompts) {
+      const display =
+        p.length > RECENT_CHIP_MAX_LEN
+          ? p.slice(0, RECENT_CHIP_MAX_LEN - 1) + '…'
+          : p;
+      descriptors.push({
+        text: p,
+        display,
+        tooltip: p,
+        variant: 'recent',
+      });
+    }
+    for (const t of INITIAL_CHIPS) {
+      descriptors.push({ text: t, display: t, variant: 'static' });
+    }
   }
 
-  if (!chipList) {
+  if (descriptors.length === 0) {
     container.setAttribute('hidden', '');
     return;
   }
 
-  for (const text of chipList) {
-    const chip = document.createElement('button');
-    chip.type = 'button';
-    chip.className = 'chip';
-    if (text === 'Done') chip.classList.add('chip-done');
-    chip.textContent = text;
-    chip.addEventListener('click', () => {
-      if (!instance) return;
-      if (text === 'Done') {
-        closeOverlay();
-        return;
-      }
-      instance.input.value = text;
-      instance.input.focus();
-      autoGrow();
-      updateChips();
-    });
-    container.appendChild(chip);
-  }
+  for (const d of descriptors) container.appendChild(makeChip(d));
   container.removeAttribute('hidden');
+}
+
+// Refresh the recent-prompt cache by asking the host (content script) for
+// the most-recent userPrompts. Best-effort — failure leaves the cache
+// untouched. Re-runs updateChips so chips appear as soon as data arrives,
+// even if the user is already looking at the empty 'open' state.
+async function refreshRecentPrompts(): Promise<void> {
+  if (!instance || !callbacks?.onLoadRecentPrompts) return;
+  try {
+    const list = await callbacks.onLoadRecentPrompts();
+    if (!instance) return;
+    instance.recentPrompts = Array.isArray(list) ? list.slice(0, 3) : [];
+    updateChips();
+  } catch {
+    // Silent — chips just don't refresh.
+  }
 }
 
 // ---- State management ----
@@ -214,14 +320,23 @@ function setEditing(ctx: EditingContext | null): void {
   }
 }
 
-function setRefineMode(id: string, name: string, code: string): void {
+function setRefineMode(
+  id: string,
+  name: string,
+  code: string,
+  entryMode: 'edit' | 'refine' = 'refine',
+): void {
   if (!instance) return;
   instance.installedFeatureId = id;
   instance.installedFeatureName = name;
   instance.installedCode = code;
+  instance.entryMode = entryMode;
+  instance.refineBannerLabel.textContent =
+    entryMode === 'edit' ? 'Editing:' : 'Installed ✓';
   instance.refineBanner.removeAttribute('hidden');
   instance.refineBannerName.textContent = name;
-  // Clear editing context — refine is separate
+  // Clear editing context — the legacy `editing` state is not used in
+  // refine entry; refine is the unified path.
   setEditing(null);
 }
 
@@ -232,8 +347,10 @@ function clearRefineMode(): void {
   instance.installedCode = '';
   instance.refinementCount = 0;
   instance.refinementHistory = [];
+  instance.entryMode = 'refine';
   instance.refineBanner.setAttribute('hidden', '');
   instance.refineBannerName.textContent = '';
+  instance.refineBannerLabel.textContent = 'Installed ✓';
 }
 
 // ---- Error display ----
@@ -745,8 +862,42 @@ function buildOverlay(): OverlayInstance {
 
   const hint = document.createElement('div');
   hint.className = 'hint';
-  const left = document.createElement('span');
-  left.textContent = '';
+
+  // Left side: keyboard-shortcuts disclosure ("?" button + popover).
+  const helpWrap = document.createElement('span');
+  helpWrap.className = 'kbd-help';
+  const helpBtn = document.createElement('button');
+  helpBtn.type = 'button';
+  helpBtn.className = 'kbd-help-btn';
+  helpBtn.textContent = '?';
+  helpBtn.setAttribute('aria-label', 'Keyboard shortcuts');
+  helpBtn.setAttribute('aria-expanded', 'false');
+  const helpPopover = document.createElement('div');
+  helpPopover.className = 'kbd-help-popover';
+  helpPopover.setAttribute('role', 'tooltip');
+  // Populated by refreshKbdHelp() after the instance is created so the
+  // shortcut list always reflects the user's configured keybinds.
+  const dl = document.createElement('dl');
+  helpPopover.appendChild(dl);
+  helpWrap.appendChild(helpBtn);
+  helpWrap.appendChild(helpPopover);
+
+  const setHelpOpen = (open: boolean): void => {
+    if (open) {
+      helpPopover.dataset.open = 'true';
+      helpBtn.setAttribute('aria-expanded', 'true');
+    } else {
+      delete helpPopover.dataset.open;
+      helpBtn.setAttribute('aria-expanded', 'false');
+    }
+  };
+  helpBtn.addEventListener('mouseenter', () => setHelpOpen(true));
+  helpWrap.addEventListener('mouseleave', () => setHelpOpen(false));
+  helpBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setHelpOpen(helpPopover.dataset.open !== 'true');
+  });
+
   const right = document.createElement('span');
   const cmdKbd = document.createElement('kbd');
   cmdKbd.textContent = '\u2318Enter';
@@ -756,7 +907,7 @@ function buildOverlay(): OverlayInstance {
   right.appendChild(document.createTextNode(' to submit \u00b7 '));
   right.appendChild(escKbd);
   right.appendChild(document.createTextNode(' to close'));
-  hint.appendChild(left);
+  hint.appendChild(helpWrap);
   hint.appendChild(right);
 
   promptView.appendChild(banner);
@@ -846,7 +997,10 @@ function buildOverlay(): OverlayInstance {
     micBtn,
     effortCheckbox,
     refineBanner,
+    refineBannerLabel,
     refineBannerName,
+    helpBtn,
+    helpPopover,
     promptAction,
     promptActionLabel,
     progressLog,
@@ -865,6 +1019,8 @@ function buildOverlay(): OverlayInstance {
     installedFeatureId: null,
     installedFeatureName: '',
     installedCode: '',
+    entryMode: 'refine',
+    recentPrompts: [],
     stopVoice: null,
   };
 }
@@ -877,8 +1033,9 @@ function ensureKeydownListener(): void {
   window.addEventListener(
     'keydown',
     (e) => {
-      const isToggle = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k';
-      if (!isToggle) return;
+      const hk = eventToHotkey(e);
+      if (!hk) return;
+      if (hk !== cachedKeybinds.overlay) return;
       if (!instance) return;
       e.preventDefault();
       e.stopPropagation();
@@ -897,6 +1054,9 @@ export function initOverlay(cb: OverlayCallbacks): void {
     instance = buildOverlay();
     document.body.appendChild(instance.host);
   }
+  // Render the keyboard-help popover with whatever keybinds are
+  // currently cached (defaults until the host pushes saved settings).
+  refreshKbdHelp();
   ensureKeydownListener();
 }
 
@@ -905,6 +1065,7 @@ export function openOverlay(): void {
   if (instance.state !== 'closed') return;
   instance.input.placeholder = 'Describe what you want\u2026 (Cmd+Enter to submit)';
   setState('open');
+  void refreshRecentPrompts();
   requestAnimationFrame(() => {
     instance?.input.focus();
   });
@@ -927,12 +1088,18 @@ export function openOverlayWithPrompt(prompt: string): void {
   instance.input.placeholder = 'Describe what you want\u2026 (Cmd+Enter to submit)';
   instance.originalPrompt = instance.input.value;
   setState('open');
+  void refreshRecentPrompts();
   autoGrow();
   requestAnimationFrame(() => {
     instance?.input.focus();
   });
 }
 
+// Edit and refine are unified: clicking "Edit" from the popup drops the
+// user straight into refine mode, with the feature's prior prompt /
+// description seeded as the first round-trip in the refinement history.
+// The banner reads "Editing: <name>" (instead of "Installed \u2713") to
+// reflect entry context \u2014 functionally identical state.
 export function openOverlayForEdit(feature: Feature): void {
   if (!instance) return;
   instance.requestToken++;
@@ -943,13 +1110,25 @@ export function openOverlayForEdit(feature: Feature): void {
   instance.currentResponse = null;
   clearPromptError();
   clearPreviewError();
+  clearProgress();
   clearRefineMode();
   instance.preview.installBtn.classList.remove('installed');
-  setEditing({ feature });
-  instance.input.value = feature.userPrompt ?? '';
-  instance.input.placeholder = 'Describe what you want\u2026 (Cmd+Enter to submit)';
-  instance.originalPrompt = instance.input.value;
-  setState('open');
+  setEditing(null);
+
+  // Seed refine state as if the user had just installed this feature.
+  // refinementCount=1 reflects the implicit "create + describe" turn so
+  // the "Done" chip behavior (>=3 refinements) stays consistent.
+  setRefineMode(feature.id, feature.name, feature.code, 'edit');
+  instance.refinementHistory = [
+    { role: 'user', content: feature.userPrompt ?? '' },
+    { role: 'assistant', content: feature.description ?? '' },
+  ];
+  instance.refinementCount = 1;
+  instance.originalPrompt = '';
+  instance.input.value = '';
+  instance.input.placeholder =
+    'Refine this feature\u2026 or describe a totally different change';
+  setState('refine');
   autoGrow();
   requestAnimationFrame(() => {
     instance?.input.focus();

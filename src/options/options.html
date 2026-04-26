@@ -156,6 +156,91 @@
       <span id="backup-status" class="status" role="status" aria-live="polite"></span>
     </section>
 
+    <section class="card keybinds-card">
+      <h2>Keyboard shortcuts</h2>
+      <p class="subtitle">
+        BOB has three built-in shortcuts. Click a row, then press the combo
+        you'd like to use. They work on any webpage you're browsing.
+      </p>
+      <div class="keybinds-list">
+        <div class="keybind-row" data-keybind="overlay">
+          <div class="keybind-info">
+            <div class="keybind-name">Open BOB</div>
+            <div class="keybind-desc">Pop up the prompt box on any page so you can build a new feature.</div>
+          </div>
+          <div class="keybind-control">
+            <input
+              type="text"
+              class="keybind-input"
+              data-keybind-input="overlay"
+              readonly
+              placeholder="click here, then press your combo"
+            />
+            <button
+              type="button"
+              class="keybind-reset"
+              data-keybind-reset="overlay"
+              aria-label="Reset to default"
+              title="Reset to default"
+            >Reset</button>
+          </div>
+          <p class="keybind-warn" data-keybind-warn="overlay" hidden></p>
+        </div>
+
+        <div class="keybind-row" data-keybind="refineLast">
+          <div class="keybind-info">
+            <div class="keybind-name">Refine last feature</div>
+            <div class="keybind-desc">Open the most recent feature for this site so you can tweak it.</div>
+          </div>
+          <div class="keybind-control">
+            <input
+              type="text"
+              class="keybind-input"
+              data-keybind-input="refineLast"
+              readonly
+              placeholder="click here, then press your combo"
+            />
+            <button
+              type="button"
+              class="keybind-reset"
+              data-keybind-reset="refineLast"
+              aria-label="Reset to default"
+              title="Reset to default"
+            >Reset</button>
+          </div>
+          <p class="keybind-warn" data-keybind-warn="refineLast" hidden></p>
+        </div>
+
+        <div class="keybind-row" data-keybind="quickToggle">
+          <div class="keybind-info">
+            <div class="keybind-name">Quick-toggle bar</div>
+            <div class="keybind-desc">Show a small panel listing this site's features so you can flip them on or off.</div>
+          </div>
+          <div class="keybind-control">
+            <input
+              type="text"
+              class="keybind-input"
+              data-keybind-input="quickToggle"
+              readonly
+              placeholder="click here, then press your combo"
+            />
+            <button
+              type="button"
+              class="keybind-reset"
+              data-keybind-reset="quickToggle"
+              aria-label="Reset to default"
+              title="Reset to default"
+            >Reset</button>
+          </div>
+          <p class="keybind-warn" data-keybind-warn="quickToggle" hidden></p>
+        </div>
+      </div>
+      <p class="hint keybinds-hint">
+        Tip: include at least one of <kbd>Ctrl</kbd>, <kbd>⌘</kbd>, <kbd>Shift</kbd>, or <kbd>Alt</kbd> so the combo doesn't conflict with normal typing. Press <kbd>Esc</kbd> while editing to cancel.
+      </p>
+      <span id="keybinds-status" class="status" role="status" aria-live="polite"></span>
+    </section>
+
     <section class="card demo-card">
       <h2>Developer & Demo</h2>
       <p class="subtitle">Load sample features to explore BOB's capabilities.</p>

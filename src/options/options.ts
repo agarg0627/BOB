@@ -1,9 +1,11 @@
-import type { ExtensionSettings, LLMProvider } from '../shared/types';
-import { getSettings, setSettings } from '../background/settings';
+import type { ExtensionSettings, KeybindSettings, LLMProvider } from '../shared/types';
+import { DEFAULT_KEYBINDS, getSettings, setSettings } from '../background/settings';
 import { anthropicProvider } from '../background/providers/anthropic';
 import { openaiProvider } from '../background/providers/openai';
 import { googleProvider } from '../background/providers/google';
 import { exportFeatures, importFeatures } from '../popup/import-export';
+import { eventToHotkey } from '../shared/hotkey';
+import { findConflict } from '../shared/keybind-conflicts';
 
 const PROVIDER_DEFAULTS: Record<LLMProvider, string> = {
   anthropic: anthropicProvider.defaultModel,
@@ -205,11 +207,173 @@ async function init(): Promise<void> {
     keyInputs[p].addEventListener('input', updateNoKeyBanner);
   });
 
+  wireKeybinds();
+
   try {
     const settings = await getSettings();
     populate(settings);
+    populateKeybinds(settings.keybinds);
   } catch (e) {
     showStatus(`Error loading settings: ${(e as Error).message}`, 'error');
+  }
+}
+
+// ---- Keybinds section ----
+
+const KEYBIND_KEYS: Array<keyof KeybindSettings> = [
+  'overlay',
+  'refineLast',
+  'quickToggle',
+];
+
+const keybindsStatusEl = document.getElementById(
+  'keybinds-status',
+) as HTMLSpanElement | null;
+let keybindsStatusTimer: number | undefined;
+
+function showKeybindsStatus(message: string, kind: 'ok' | 'error'): void {
+  if (!keybindsStatusEl) return;
+  keybindsStatusEl.textContent = message;
+  keybindsStatusEl.classList.remove('status-ok', 'status-error');
+  keybindsStatusEl.classList.add(kind === 'ok' ? 'status-ok' : 'status-error');
+  if (keybindsStatusTimer !== undefined) window.clearTimeout(keybindsStatusTimer);
+  if (kind === 'ok') {
+    keybindsStatusTimer = window.setTimeout(() => {
+      if (!keybindsStatusEl) return;
+      keybindsStatusEl.textContent = '';
+      keybindsStatusEl.classList.remove('status-ok');
+    }, 2200);
+  }
+}
+
+function keybindInput(key: keyof KeybindSettings): HTMLInputElement | null {
+  return document.querySelector<HTMLInputElement>(
+    `input.keybind-input[data-keybind-input="${key}"]`,
+  );
+}
+
+function keybindWarn(key: keyof KeybindSettings): HTMLParagraphElement | null {
+  return document.querySelector<HTMLParagraphElement>(
+    `p.keybind-warn[data-keybind-warn="${key}"]`,
+  );
+}
+
+function keybindRow(key: keyof KeybindSettings): HTMLElement | null {
+  return document.querySelector<HTMLElement>(
+    `.keybind-row[data-keybind="${key}"]`,
+  );
+}
+
+const KEYBIND_LABELS: Record<keyof KeybindSettings, string> = {
+  overlay: 'the "Open BOB" shortcut',
+  refineLast: 'the "Refine last feature" shortcut',
+  quickToggle: 'the "Quick-toggle bar" shortcut',
+};
+
+// Re-checks every keybind row against (a) the other two rows and (b)
+// Chrome reserved combos. Updates the inline red warning + adds a
+// .has-conflict class on the row for the bordered/tinted treatment.
+function refreshKeybindWarnings(): void {
+  const current: Record<keyof KeybindSettings, string> = {
+    overlay: keybindInput('overlay')?.value ?? '',
+    refineLast: keybindInput('refineLast')?.value ?? '',
+    quickToggle: keybindInput('quickToggle')?.value ?? '',
+  };
+  for (const key of KEYBIND_KEYS) {
+    const warn = keybindWarn(key);
+    const row = keybindRow(key);
+    if (!warn || !row) continue;
+    const others = KEYBIND_KEYS.filter((k) => k !== key).map((k) => ({
+      hotkey: current[k],
+      label: KEYBIND_LABELS[k],
+    }));
+    const conflict = findConflict(current[key], others);
+    if (conflict) {
+      warn.textContent = conflict.message;
+      warn.removeAttribute('hidden');
+      row.classList.add('has-conflict');
+    } else {
+      warn.textContent = '';
+      warn.setAttribute('hidden', '');
+      row.classList.remove('has-conflict');
+    }
+  }
+}
+
+function populateKeybinds(keybinds: Partial<KeybindSettings> | undefined): void {
+  for (const key of KEYBIND_KEYS) {
+    const input = keybindInput(key);
+    if (!input) continue;
+    input.value = keybinds?.[key] ?? DEFAULT_KEYBINDS[key];
+  }
+  refreshKeybindWarnings();
+}
+
+async function persistKeybind(
+  key: keyof KeybindSettings,
+  value: string | undefined,
+): Promise<void> {
+  try {
+    const current = await getSettings();
+    const nextBinds: Partial<KeybindSettings> = {
+      ...(current.keybinds ?? {}),
+      [key]: value ?? DEFAULT_KEYBINDS[key],
+    };
+    await setSettings({ keybinds: nextBinds });
+    showKeybindsStatus('Saved.', 'ok');
+  } catch (e) {
+    showKeybindsStatus(`Error: ${(e as Error).message}`, 'error');
+  }
+}
+
+function wireKeybinds(): void {
+  for (const key of KEYBIND_KEYS) {
+    const input = keybindInput(key);
+    const reset = document.querySelector<HTMLButtonElement>(
+      `button.keybind-reset[data-keybind-reset="${key}"]`,
+    );
+    if (!input) continue;
+
+    input.addEventListener('focus', () => {
+      input.classList.add('capturing');
+      input.dataset.previous = input.value;
+      input.value = '';
+      input.placeholder = 'press your combo…';
+    });
+
+    input.addEventListener('blur', () => {
+      input.classList.remove('capturing');
+      if (!input.value && input.dataset.previous) {
+        input.value = input.dataset.previous;
+      }
+      delete input.dataset.previous;
+      input.placeholder = 'click here, then press your combo';
+    });
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        input.blur();
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      const hk = eventToHotkey(e);
+      if (!hk) return; // modifier-only — keep waiting
+      input.value = hk;
+      delete input.dataset.previous; // commit; don't restore on blur
+      refreshKeybindWarnings();
+      input.blur();
+      void persistKeybind(key, hk);
+    });
+
+    reset?.addEventListener('click', () => {
+      const def = DEFAULT_KEYBINDS[key];
+      input.value = def;
+      refreshKeybindWarnings();
+      void persistKeybind(key, def);
+    });
   }
 }
 

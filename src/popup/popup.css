@@ -322,6 +322,89 @@ button {
 [data-state='working'] .dot { background: var(--green); }
 [data-state='never']   .dot { background: var(--yellow); }
 [data-state='error']   .dot { background: var(--red); }
+
+/* Per-feature shortcut binder. Rendered as a row (label + capture input
+   + clear button) plus a single explanatory line beneath it so the
+   field's purpose is obvious without the user hovering for a tooltip. */
+.hotkey-block {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.hotkey-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+.hotkey-help {
+  font-size: 10.5px;
+  color: var(--fg-faint);
+  line-height: 1.35;
+  padding-left: 1px;
+}
+.hotkey-warn {
+  font-size: 10.5px;
+  color: #f87171;
+  line-height: 1.35;
+  padding-left: 1px;
+  margin-top: 1px;
+}
+.hotkey-warn[hidden] {
+  display: none;
+}
+.hotkey-block.has-conflict .hotkey-input {
+  border-color: rgba(248, 113, 113, 0.55);
+  background: rgba(248, 113, 113, 0.06);
+}
+.hotkey-label {
+  color: var(--fg-faint);
+  white-space: nowrap;
+}
+.hotkey-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 1px dashed rgba(255, 255, 255, 0.16);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-family: 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10.5px;
+  color: var(--fg);
+  cursor: pointer;
+}
+.hotkey-input::placeholder {
+  color: var(--fg-faint);
+  font-family: inherit;
+}
+.hotkey-input:focus {
+  outline: none;
+  border-color: rgba(96, 165, 250, 0.6);
+  border-style: solid;
+  background: rgba(96, 165, 250, 0.08);
+  cursor: text;
+}
+.hotkey-input.capturing::placeholder {
+  color: rgba(96, 165, 250, 0.85);
+}
+.hotkey-clear {
+  appearance: none;
+  background: transparent;
+  border: none;
+  color: var(--fg-faint);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  border-radius: 3px;
+}
+.hotkey-clear:hover {
+  color: var(--fg);
+  background: rgba(255, 255, 255, 0.08);
+}
+.hotkey-clear[hidden] { display: none; }
 [data-state='disabled'] .dot { background: var(--gray); }
 
 [data-state='error'] .status-text {

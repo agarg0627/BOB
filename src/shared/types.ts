@@ -2,11 +2,27 @@ export type LLMProvider = 'anthropic' | 'openai' | 'google';
 
 export type EffortMode = 'standard' | 'high';
 
+// Customizable keyboard shortcuts. Stored as canonical hotkey strings
+// from shared/hotkey.ts (e.g. "Ctrl+K", "Ctrl+Shift+Y"). Cmd is
+// normalized to "Ctrl" so a single setting works on Mac and Windows.
+export interface KeybindSettings {
+  // Open / close the BOB overlay.
+  overlay: string;
+  // Open the most-recently-installed feature for this site in refine
+  // mode.
+  refineLast: string;
+  // Open the quick-toggle bar listing features for this site.
+  quickToggle: string;
+}
+
 export interface ExtensionSettings {
   provider: LLMProvider;
   apiKeys: Partial<Record<LLMProvider, string>>;
   model?: string;
   effortMode?: EffortMode;
+  // Optional override of the built-in keybinds. Missing fields fall
+  // back to the defaults in background/settings.ts.
+  keybinds?: Partial<KeybindSettings>;
 }
 
 // One turn of the user/assistant refinement conversation. Past assistant
@@ -81,6 +97,10 @@ export interface Feature {
   parentFeatureId?: string;
   iterationNumber?: number;
   agentTrace?: AgentTrace;
+  // Optional keyboard shortcut (e.g. "Ctrl+Shift+H") that toggles this
+  // feature when pressed on a matching page. Format produced by
+  // shared/hotkey.ts so popup capture and content-script matching agree.
+  hotkey?: string;
 }
 
 export interface GenerateRequest {
@@ -125,6 +145,7 @@ export type Message =
   | { type: 'LIST_FEATURES' }
   | { type: 'DELETE_FEATURE'; id: string }
   | { type: 'TOGGLE_FEATURE'; id: string; enabled: boolean }
+  | { type: 'UPDATE_FEATURE'; id: string; patch: Partial<Feature> }
   | { type: 'RUN_FEATURE'; featureId: string; code: string }
   | { type: 'GET_SETTINGS' }
   | { type: 'SET_SETTINGS'; settings: Partial<ExtensionSettings> }
