@@ -5,8 +5,21 @@ import { installObserverHelper } from './observer-helper';
 import { initLifecycle } from './lifecycle';
 import { initBehaviorTracker } from './behavior-tracker';
 import { prunePage } from './dom-prune';
-import { initOverlay, openOverlayForEdit, openOverlayWithPrompt } from './overlay/overlay';
-import type { Feature, GenerateResponse, Message } from '../shared/types';
+import {
+  initOverlay,
+  openOverlayForEdit,
+  openOverlayWithPrompt,
+  setOverlayKeybinds,
+} from './overlay/overlay';
+import { initQuickToggle, setQuickToggleKeybinds } from './quick-toggle';
+import { eventToHotkey, isModifierKey } from '../shared/hotkey';
+import type {
+  ExtensionSettings,
+  Feature,
+  GenerateResponse,
+  KeybindSettings,
+  Message,
+} from '../shared/types';
 
 console.log('[bob] content script loaded on', location.href);
 
@@ -14,6 +27,85 @@ console.log('[bob] content script loaded on', location.href);
 initSpaWatcher();
 installObserverHelper();
 initBehaviorTracker();
+initQuickToggle();
+
+// Cache of features whose URL pattern matches the current page.
+// Includes BOTH enabled and disabled features — the per-feature hotkey
+// listener has to be able to flip a disabled feature back on, which
+// means it needs visibility into disabled rows too. Storage.matching()
+// filters by enabled, so we use LIST_FEATURES + client-side pattern
+// matching here instead.
+let cachedFeatures: Feature[] = [];
+
+// URL-pattern glob → URL matcher. Same logic the storage layer uses
+// internally; inlined here so the content script doesn't reach into
+// other layers' privates.
+function patternMatchesUrl(pattern: string, url: string): boolean {
+  try {
+    let body = '';
+    for (const c of pattern) {
+      if (c === '*') body += '.*';
+      else if (c === '?') body += '.';
+      else body += c.replace(/[.+^$(){}|\[\]\\\/]/g, '\\$&');
+    }
+    return new RegExp('^' + body + '$').test(url);
+  } catch {
+    return false;
+  }
+}
+
+// Configured keybinds, mirrored from background/settings. The overlay
+// and quick-toggle modules each keep their own copy; this one is used
+// by the per-feature hotkey listener below for the refine-last combo.
+const DEFAULT_KEYBINDS: KeybindSettings = {
+  overlay: 'Ctrl+K',
+  refineLast: 'Ctrl+I',
+  quickToggle: 'Ctrl+Shift+Y',
+};
+let cachedKeybinds: KeybindSettings = { ...DEFAULT_KEYBINDS };
+
+async function refreshFeatureCache(): Promise<void> {
+  try {
+    const list = await send<Feature[]>({ type: 'LIST_FEATURES' });
+    if (!Array.isArray(list)) return;
+    const url = location.href;
+    cachedFeatures = list.filter((f) =>
+      patternMatchesUrl(f.urlPattern, url),
+    );
+  } catch {
+    // Background not ready / context invalidated — leave cache as-is.
+  }
+}
+
+async function refreshKeybindsCache(): Promise<void> {
+  try {
+    const settings = await send<ExtensionSettings>({ type: 'GET_SETTINGS' });
+    const k = settings?.keybinds ?? {};
+    cachedKeybinds = {
+      overlay: k.overlay || DEFAULT_KEYBINDS.overlay,
+      refineLast: k.refineLast || DEFAULT_KEYBINDS.refineLast,
+      quickToggle: k.quickToggle || DEFAULT_KEYBINDS.quickToggle,
+    };
+    setOverlayKeybinds(cachedKeybinds);
+    setQuickToggleKeybinds(cachedKeybinds);
+  } catch {
+    // Background not ready — defaults remain.
+  }
+}
+
+void refreshFeatureCache();
+void refreshKeybindsCache();
+
+try {
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local') return;
+    if ('features' in changes) void refreshFeatureCache();
+    // settings live under the 'settings' key — see background/settings.ts
+    if ('settings' in changes) void refreshKeybindsCache();
+  });
+} catch {
+  // chrome.storage may be unavailable in some contexts (sandbox); skip.
+}
 
 // 2. Run features on page-ready and on every SPA navigation
 initLifecycle({
@@ -24,6 +116,7 @@ initLifecycle({
     } catch (e) {
       console.error('[bob] runAllForUrl on page ready failed:', e);
     }
+    void refreshFeatureCache();
   },
   onUrlChange: async () => {
     try {
@@ -32,8 +125,80 @@ initLifecycle({
     } catch (e) {
       console.error('[bob] runAllForUrl on url change failed:', e);
     }
+    void refreshFeatureCache();
   },
 });
+
+// ---- Per-feature hotkey + Cmd+I refine-last listener ----
+//
+// Capture-phase, attached to window. Skipped when the event target is:
+//   - inside any input/textarea/contenteditable (don't steal user typing)
+//   - the BOB overlay or quick-toggle shadow host (those have their own
+//     keydown handling and shouldn't double-trigger)
+//
+// Cmd+I  → open the most-recently-installed matching feature in refine
+//          mode (the unified edit flow).
+// Other  → if any cached feature has hotkey === pressed combo, toggle
+//          all matches and reload the page.
+function eventTargetIsInputLike(e: KeyboardEvent): boolean {
+  const t = e.target as Element | null;
+  if (!t || t.nodeType !== 1) return false;
+  const tag = (t.tagName || '').toLowerCase();
+  if (tag === 'bob-overlay-host' || tag === 'bob-toggle-host') return true;
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return true;
+  if ((t as HTMLElement).isContentEditable) return true;
+  return false;
+}
+
+window.addEventListener(
+  'keydown',
+  (e) => {
+    if (isModifierKey(e)) return;
+    if (eventTargetIsInputLike(e)) return;
+    const hk = eventToHotkey(e);
+    if (!hk) return;
+
+    // Configured "refine last" combo (default Ctrl+I) opens the
+    // most-recently-installed matching feature in refine mode.
+    if (hk === cachedKeybinds.refineLast) {
+      if (cachedFeatures.length === 0) return;
+      const sorted = [...cachedFeatures].sort(
+        (a, b) => b.createdAt - a.createdAt,
+      );
+      e.preventDefault();
+      e.stopPropagation();
+      openOverlayForEdit(sorted[0]);
+      return;
+    }
+
+    // Per-feature hotkey: toggle every feature whose stored hotkey matches.
+    // We do not pre-filter on `enabled` so the same combo can both
+    // enable a disabled feature and disable an enabled one.
+    const matches = cachedFeatures.filter((f) => f.hotkey === hk);
+    if (matches.length === 0) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    void (async () => {
+      for (const f of matches) {
+        try {
+          await send({
+            type: 'TOGGLE_FEATURE',
+            id: f.id,
+            enabled: !f.enabled,
+          });
+        } catch {
+          // Best-effort.
+        }
+      }
+      // Reload to apply the new state. Short delay so the storage write
+      // settles before document teardown.
+      setTimeout(() => location.reload(), 150);
+    })();
+  },
+  true,
+);
 
 // ---- Streaming generation helper ----
 
@@ -254,6 +419,27 @@ initOverlay({
     // feature actually living in storage now, so it can deep-link or
     // highlight without re-querying.
     return { id: installed.id };
+  },
+  onLoadRecentPrompts: async () => {
+    try {
+      const all = await send<Feature[]>({ type: 'LIST_FEATURES' });
+      if (!Array.isArray(all)) return [];
+      const sorted = [...all].sort((a, b) => b.createdAt - a.createdAt);
+      const seen = new Set<string>();
+      const out: string[] = [];
+      for (const f of sorted) {
+        const p = (f.userPrompt ?? '').trim();
+        if (!p) continue;
+        const key = p.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(p);
+        if (out.length >= 3) break;
+      }
+      return out;
+    } catch {
+      return [];
+    }
   },
 });
 

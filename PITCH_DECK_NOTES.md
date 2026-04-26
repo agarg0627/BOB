@@ -241,7 +241,7 @@ Naked LLM output is not trustworthy. BOB layers four independent checks:
   the model's confidence.
 - **Reflexion retry loop**
   ([content/index.ts:101-160](src/content/index.ts#L101-L160)) — runtime
-  errors are fed back with a fresh DOM snapshot for up to 2 retries. Pull
+  errors are fed back with a fresh DOM snapshot for up to 2 retries. Pullzgo s
   this out as a "production Reflexion implementation" line.
 - **Idempotency contract**
   ([prompt.ts:33-41](src/background/providers/prompt.ts#L33-L41)) — every

@@ -252,8 +252,10 @@
   font-size: 11px;
   color: rgba(245, 245, 245, 0.4);
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
   user-select: none;
+  position: relative;
 }
 
 kbd {
@@ -261,6 +263,74 @@ kbd {
   font-size: 10.5px;
   font-weight: 600;
   color: rgba(245, 245, 245, 0.5);
+}
+
+/* Keyboard-shortcuts disclosure (the "?" button + popover). */
+.kbd-help {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.kbd-help-btn {
+  appearance: none;
+  background: transparent;
+  border: 1px solid rgba(245, 245, 245, 0.18);
+  color: rgba(245, 245, 245, 0.55);
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  line-height: 1;
+}
+.kbd-help-btn:hover,
+.kbd-help-btn[aria-expanded="true"] {
+  color: rgba(245, 245, 245, 0.9);
+  border-color: rgba(245, 245, 245, 0.4);
+}
+
+.kbd-help-popover {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  background: rgba(20, 20, 22, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 10px 12px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+  min-width: 220px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: rgba(245, 245, 245, 0.85);
+  z-index: 10;
+  display: none;
+}
+.kbd-help-popover[data-open="true"] {
+  display: block;
+}
+.kbd-help-popover dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 12px;
+  row-gap: 4px;
+}
+.kbd-help-popover dt {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  color: rgba(245, 245, 245, 0.65);
+  white-space: nowrap;
+}
+.kbd-help-popover dd {
+  margin: 0;
+  color: rgba(245, 245, 245, 0.85);
 }
 
 /* === Preview view === */
@@ -563,6 +633,22 @@ textarea.prompt:disabled {
 .chip-done:hover {
   background: rgba(46, 160, 67, 0.25);
   color: #7ae89a;
+}
+
+/* Recent-prompt chips: subtle prefix marker so they read distinct from
+   the static suggestions without adding a heading. */
+.chip-recent {
+  background: rgba(96, 165, 250, 0.12);
+  color: rgba(190, 215, 255, 0.85);
+}
+.chip-recent:hover {
+  background: rgba(96, 165, 250, 0.22);
+  color: #d6e8ff;
+}
+.chip-recent::before {
+  content: "↺ ";
+  opacity: 0.6;
+  margin-right: 2px;
 }
 
 /* === Mic button === */

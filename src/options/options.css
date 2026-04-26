@@ -333,3 +333,112 @@ button.primary:active {
 .status-error {
   color: #c92a2a;
 }
+
+/* ---- Keyboard shortcuts card ---- */
+.keybinds-card .subtitle {
+  margin-bottom: 14px;
+}
+.keybinds-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.keybind-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 6px 14px;
+  padding: 12px 14px;
+  border: 1px solid #e5e5ea;
+  border-radius: 10px;
+  background: #fafafa;
+}
+.keybind-row.has-conflict {
+  border-color: #f5b3b3;
+  background: #fff7f7;
+}
+.keybind-warn {
+  grid-column: 1 / -1;
+  font-size: 11.5px;
+  color: #c92a2a;
+  line-height: 1.4;
+  margin: 2px 0 0;
+}
+.keybind-warn[hidden] {
+  display: none;
+}
+.keybind-info {
+  flex: 1;
+  min-width: 0;
+}
+.keybind-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1d1d1f;
+  margin-bottom: 2px;
+}
+.keybind-desc {
+  font-size: 12px;
+  color: #6e6e73;
+  line-height: 1.4;
+}
+.keybind-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.keybind-input {
+  font-family: 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  background: #fff;
+  border: 1px dashed #c0c0c5;
+  border-radius: 6px;
+  padding: 6px 10px;
+  width: 130px;
+  text-align: center;
+  cursor: pointer;
+  color: #1d1d1f;
+}
+.keybind-input::placeholder {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 11px;
+  color: #a8a8ad;
+}
+.keybind-input:focus {
+  outline: none;
+  border-color: #0a84ff;
+  border-style: solid;
+  background: #f0f7ff;
+}
+.keybind-input.capturing::placeholder {
+  color: #0a84ff;
+}
+.keybind-reset {
+  appearance: none;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: #6e6e73;
+  cursor: pointer;
+}
+.keybind-reset:hover {
+  background: #f0f0f3;
+  color: #1d1d1f;
+}
+.keybinds-hint {
+  margin-top: 12px;
+  font-size: 12px;
+  color: #6e6e73;
+}
+.keybinds-hint kbd {
+  font-family: 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10.5px;
+  background: #ececef;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid #d8d8dc;
+  color: #1d1d1f;
+}

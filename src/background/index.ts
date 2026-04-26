@@ -57,6 +57,11 @@ chrome.runtime.onMessage.addListener(
             sendResponse({ ok: true });
             break;
           }
+          case 'UPDATE_FEATURE': {
+            await Storage.update(msg.id, msg.patch);
+            sendResponse({ ok: true });
+            break;
+          }
           case 'RUN_FEATURE': {
             const tabId = sender.tab?.id;
             if (tabId === undefined) {

@@ -1,9 +1,11 @@
 // Owned by Person D. Popup UI: feature list + bulk actions + iteration entry
 // + suggestions + status surface.
-import type { Feature, Suggestion } from '../shared/types';
+import type { ExtensionSettings, Feature, KeybindSettings, Suggestion } from '../shared/types';
 import { applyUiScale } from '../shared/ui-scale';
 import { startEdit, maybeReloadActiveTab, patternMatchesUrl } from './iteration';
 import { exportSingleFeature } from './import-export';
+import { eventToHotkey } from '../shared/hotkey';
+import { findConflict, type OtherBinding } from '../shared/keybind-conflicts';
 
 applyUiScale();
 
@@ -16,6 +18,9 @@ interface AppState {
   activeUrl: string | null;
   suggestions: Suggestion[];
   hasApiKey: boolean;
+  // Cached settings keybinds, used for conflict detection on per-feature
+  // hotkey inputs. null until the first GET_SETTINGS round-trip lands.
+  keybinds: KeybindSettings | null;
 }
 
 const state: AppState = {
@@ -24,6 +29,7 @@ const state: AppState = {
   activeUrl: null,
   suggestions: [],
   hasApiKey: true, // assume true until loaded
+  keybinds: null,
 };
 
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
@@ -327,6 +333,7 @@ function buildCard(f: Feature): HTMLElement {
       el('span', { className: 'dot' }),
       el('span', { className: 'status-text', text: statusLabelFor(f) }),
     ]),
+    buildHotkeyRow(f),
     buildMetaRow(f),
   ]);
 
@@ -396,6 +403,141 @@ function buildParentLine(f: Feature): HTMLElement | null {
     ? `Edited from “${parent.name}”`
     : 'Edited from a previous version';
   return el('div', { className: 'parent-line', text });
+}
+
+// Compact per-feature shortcut binder. Lets the user assign a key combo
+// that toggles this feature on or off when pressed on a matching page.
+//
+// UX: the input stays readonly so it can't be edited as text. Click it
+// to enter "capture" mode; the next non-modifier press is serialized
+// via shared/hotkey.ts and persisted. A short helper line under the
+// row explains what the shortcut actually does, to avoid the bare-
+// "Hotkey:" mystery.
+function buildHotkeyRow(f: Feature): HTMLElement {
+  const PLACEHOLDER_IDLE = 'click here, then press a combo';
+  const PLACEHOLDER_CAPTURING = 'press a combo…';
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'hotkey-input';
+  input.readOnly = true;
+  input.placeholder = PLACEHOLDER_IDLE;
+  input.value = f.hotkey ?? '';
+  input.title =
+    'Press this combo on a matching page to turn this feature on or off.';
+
+  const clearBtn = document.createElement('button');
+  clearBtn.type = 'button';
+  clearBtn.className = 'hotkey-clear';
+  clearBtn.setAttribute('aria-label', 'Remove shortcut');
+  clearBtn.title = 'Remove shortcut';
+  clearBtn.textContent = '×';
+  if (!f.hotkey) clearBtn.hidden = true;
+
+  const row = el('div', { className: 'hotkey-row' }, [
+    el('span', { className: 'hotkey-label', text: 'Toggle shortcut' }),
+    input,
+    clearBtn,
+  ]);
+
+  const help = el('div', {
+    className: 'hotkey-help',
+    text: 'Optional. Press this combo on a matching page to turn this feature on or off.',
+  });
+
+  const warn = el('div', { className: 'hotkey-warn', attrs: { hidden: '' } });
+  const block = el('div', { className: 'hotkey-block' }, [row, help, warn]);
+
+  // Compute conflicts against (a) the three Settings keybinds and (b)
+  // every other feature's hotkey, then map through findConflict so
+  // Chrome reserved combos are also caught.
+  const refreshConflict = (): void => {
+    const others: OtherBinding[] = [];
+    if (state.keybinds) {
+      others.push({
+        hotkey: state.keybinds.overlay,
+        label: 'the "Open BOB" shortcut',
+      });
+      others.push({
+        hotkey: state.keybinds.refineLast,
+        label: 'the "Refine last feature" shortcut',
+      });
+      others.push({
+        hotkey: state.keybinds.quickToggle,
+        label: 'the "Quick-toggle bar" shortcut',
+      });
+    }
+    for (const other of state.features) {
+      if (other.id === f.id) continue;
+      if (!other.hotkey) continue;
+      others.push({
+        hotkey: other.hotkey,
+        label: `feature "${other.name || '(unnamed)'}"`,
+      });
+    }
+    const conflict = findConflict(f.hotkey, others);
+    if (conflict) {
+      warn.textContent = conflict.message;
+      warn.removeAttribute('hidden');
+      block.classList.add('has-conflict');
+    } else {
+      warn.textContent = '';
+      warn.setAttribute('hidden', '');
+      block.classList.remove('has-conflict');
+    }
+  };
+
+  const persist = async (value: string | undefined): Promise<void> => {
+    try {
+      await chrome.runtime.sendMessage({
+        type: 'UPDATE_FEATURE',
+        id: f.id,
+        patch: { hotkey: value },
+      });
+      // Mutate local state so re-renders reflect immediately without a
+      // full reload from background.
+      f.hotkey = value;
+      input.value = value ?? '';
+      clearBtn.hidden = !value;
+      refreshConflict();
+    } catch {
+      showToast('Could not save shortcut');
+    }
+  };
+
+  input.addEventListener('focus', () => {
+    input.classList.add('capturing');
+    input.placeholder = PLACEHOLDER_CAPTURING;
+  });
+  input.addEventListener('blur', () => {
+    input.classList.remove('capturing');
+    input.placeholder = PLACEHOLDER_IDLE;
+  });
+  input.addEventListener('keydown', (e) => {
+    // Allow Esc to abort capture.
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      input.blur();
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    const hk = eventToHotkey(e);
+    if (!hk) return; // modifier-only — keep waiting
+    void persist(hk);
+    input.blur();
+  });
+
+  clearBtn.addEventListener('click', () => {
+    void persist(undefined);
+  });
+
+  // Initial check so the warning shows on first render if the stored
+  // value already conflicts (e.g. another feature shares the combo).
+  refreshConflict();
+
+  return block;
 }
 
 function buildMetaRow(f: Feature): HTMLElement | null {
@@ -1035,20 +1177,41 @@ async function loadHasApiKey(): Promise<boolean> {
   }
 }
 
+async function loadKeybinds(): Promise<KeybindSettings | null> {
+  try {
+    const settings = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
+    if (settings && typeof settings === 'object' && 'keybinds' in settings) {
+      const k = (settings as ExtensionSettings).keybinds;
+      if (k) {
+        return {
+          overlay: k.overlay ?? 'Ctrl+K',
+          refineLast: k.refineLast ?? 'Ctrl+I',
+          quickToggle: k.quickToggle ?? 'Ctrl+Shift+Y',
+        };
+      }
+    }
+  } catch {
+    // background not ready
+  }
+  return null;
+}
+
 async function boot(): Promise<void> {
   showLoading();
   const tabInfo = await getActiveTabInfo();
   state.activeUrl = tabInfo.url;
   state.hostname = tabInfo.hostname;
-  // Features, suggestions, and settings in parallel.
-  const [features, suggestions, hasApiKey] = await Promise.all([
+  // Features, suggestions, settings + keybinds in parallel.
+  const [features, suggestions, hasApiKey, keybinds] = await Promise.all([
     loadFeatures(),
     loadSuggestions(tabInfo.hostname),
     loadHasApiKey(),
+    loadKeybinds(),
   ]);
   state.features = features;
   state.suggestions = suggestions;
   state.hasApiKey = hasApiKey;
+  state.keybinds = keybinds;
   render();
 }
 
