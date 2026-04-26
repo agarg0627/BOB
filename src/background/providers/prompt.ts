@@ -244,3 +244,59 @@ export function buildUserPrompt(req: GenerateRequest): string {
 // Exposed for tests / future tooling that needs to render a refinement
 // summary line without re-implementing the truncation rule.
 export const _internal = { summariseExisting };
+
+// ---------------------------------------------------------------------
+// Suggestions analysis prompt
+// ---------------------------------------------------------------------
+//
+// Used by background/suggestions-engine.ts to do a single-turn LLM
+// analysis of recent behavior events for one hostname. NOT routed
+// through the agent loop or any tools — just one chat() turn.
+
+export const SUGGESTIONS_SYSTEM_PROMPT = `You are analyzing a user's browsing behavior on a single website to propose useful customizations.
+
+You will receive: hostname, summarized recent behavior events (clicks, dismissals, scroll patterns, dwell time, revisits).
+
+Your job: identify 0 to 3 concrete patterns that suggest a customization the user would value. Output strict JSON.
+
+RULES:
+- Be specific and natural. "Auto-dismiss the 'Subscribe to our newsletter' popup" is good. "Hide elements with class .modal" is bad.
+- Only propose suggestions backed by actual evidence in the events. Don't speculate.
+- The proposedPrompt should read like a user's request to a customization tool: imperative, specific, in plain language.
+- The rationale should reference the actual evidence concretely. Example: "You've dismissed the email signup popup 8 times this week" — not "We noticed a pattern."
+- Confidence should reflect how strong the evidence is. 0.5-0.7 for moderate patterns, 0.7-0.9 for strong patterns. Never above 0.95.
+- A SINGLE strong signal is enough to propose a suggestion — you don't need multiple corroborating event types. One \`shorts_doomscroll\` event, one \`site_sequence\` with count >= 3, or one \`frequent_search_destination\` with count >= 3 are each sufficient.
+- If no patterns are strong enough, return an empty array. Restraint is rewarded.
+- If the user appears to be on a sensitive site (banking, healthcare, auth flows), return empty array.
+
+SPECIFIC PATTERNS TO RECOGNIZE:
+
+- shorts_doomscroll → the user has been actively scrolling shorts/reels for 15+ seconds. Propose a TIME-MANAGEMENT feature. Examples by surface:
+    YouTube /shorts → "Hide the YouTube Shorts shelf and the Shorts tab in the sidebar."
+    Instagram /reels → "Replace the Instagram Reels feed with a blank page that says 'go do something else'."
+    TikTok → "Show a 5-minute timer banner that asks me if I still want to keep scrolling."
+  Choose tone based on metadata.activeScrollMs — small overshoot = gentle nudge, big overshoot = strong intervention.
+
+- frequent_search_destination → the user has arrived at this hostname from a search engine 3+ times in the last week. Propose making this site easier to reach. Examples:
+    "Show a small banner reminding me to bookmark this site (I've searched for it N times this week)."
+    "Add a one-click 'Pin to favorites' button to the top of this page."
+  Use metadata.count and metadata.referrer in the rationale ("You've Googled your way here 5 times in 7 days").
+
+- site_sequence → the user has gone from metadata.from to metadata.to N times in 5-minute windows. The event hostname IS the FROM site. Propose a feature for the FROM site that links forward to the TO site, INFERRING the user's intent from the pair:
+    amazon.com → reddit.com  → "On Amazon product pages, add a 'Reddit reviews of this product' button that opens a Reddit search for the product title."
+    youtube.com → genius.com  → "On YouTube music videos, add a 'Lyrics on Genius' button that opens a Genius search for the title and artist."
+    github.com → npmjs.com    → "On GitHub repository pages, add an 'npm package' button when the repo is a published package."
+  When the (from, to) pair is unclear, propose a generic shortcut button. Always cite metadata.count in the rationale ("You've gone from amazon.com to reddit.com 6 times this week").
+
+OUTPUT (strict JSON, no preamble, no markdown):
+{
+  "suggestions": [
+    {
+      "proposedPrompt": "<imperative customization request>",
+      "rationale": "<concrete evidence from events>",
+      "confidence": <number 0.0-0.95>
+    }
+  ]
+}
+
+If no good suggestions, return: {"suggestions": []}`;

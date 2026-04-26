@@ -52,7 +52,41 @@ export interface AgentTrace {
 }
 
 export interface UserBehaviorEvent {
-  type: 'click_close' | 'click_dismiss' | 'hide_element' | 'time_on_site';
+  type:
+    | 'click_close'
+    | 'click_dismiss'
+    | 'hide_element'
+    | 'time_on_site'
+    // User scrolled past a region then bounced back to within ~100px
+    // of the original Y. Suggests something on the page is worth
+    // revisiting (or worth pinning / sticky-ing).
+    | 'scroll_past_back'
+    // Aggregated marker fired when the same close-like signature has
+    // been dismissed N+ times. Heuristic-only producer for now; the
+    // LLM analyzer reads this if present.
+    | 'repeated_dismissal'
+    // 30+ seconds on the page, visible, with no click / scroll /
+    // keypress. Hints that the user is reading rather than navigating.
+    | 'long_dwell'
+    // Returned to the same hostname within 5 minutes of the previous
+    // visit. Hints at a habitual / repeated workflow.
+    | 'rapid_revisit'
+    // 15+ seconds of active scrolling on a shorts/reels surface
+    // (YouTube /shorts/, Instagram /reels, TikTok). Signal for
+    // time-management suggestions like hiding the shelf or adding a
+    // reminder timer.
+    | 'shorts_doomscroll'
+    // User has arrived at this hostname from a search engine N+
+    // times in the last 7 days. metadata.referrer holds the search
+    // origin. Signal for "make this site easier to find" suggestions
+    // (auto-bookmark, pin to address bar, etc).
+    | 'frequent_search_destination'
+    // User has gone from one hostname to another N+ times within a
+    // 5-minute window. Event hostname is the ORIGIN (so the suggestion
+    // surfaces on the site where the link/button would be installed).
+    // metadata: { from, to, count }. The LLM is expected to infer
+    // intent from the (from, to) pair.
+    | 'site_sequence';
   url: string;
   hostname: string;
   selector?: string;
@@ -155,4 +189,8 @@ export type Message =
   | { type: 'GET_SUGGESTIONS_VISIBLE'; hostname?: string }
   | { type: 'SET_SUGGESTION_STATE'; id: string; state: SuggestionDismissalState }
   | { type: 'EXPORT_FEATURES' }
-  | { type: 'IMPORT_FEATURES'; json: string; mode?: 'replace' | 'merge' };
+  | { type: 'IMPORT_FEATURES'; json: string; mode?: 'replace' | 'merge' }
+  // Debug helpers — surfaced to the SW console for testing the
+  // suggestions pipeline. Production UI does not call these.
+  | { type: 'DEBUG_FORCE_SUGGESTIONS'; hostname: string }
+  | { type: 'DEBUG_SUGGESTIONS_STATE'; hostname?: string };
