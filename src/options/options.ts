@@ -393,89 +393,60 @@ function wireKeybinds(): void {
 // to fill in after testing>.
 const DEMO_FEATURES = [
   {
-    name: 'Hide YouTube Shorts',
-    description: 'Hides Shorts shelves from the YouTube homepage.',
-    urlPattern: '*://*.youtube.com/*',
-    userPrompt: 'Hide YouTube Shorts',
-    code: `(function(){try{
-  var slug='hide-yt-shorts';
-  if(window.__bobObserve){
-    window.__bobObserve(slug,function(){
-      document.querySelectorAll('ytd-rich-shelf-renderer, ytd-reel-shelf-renderer').forEach(function(el){
-        if(el.getAttribute('data-bob')===slug)return;
-        el.setAttribute('data-bob',slug);
-        el.style.display='none';
-      });
-    });
-  }else{
-    document.querySelectorAll('ytd-rich-shelf-renderer, ytd-reel-shelf-renderer').forEach(function(el){
-      el.setAttribute('data-bob',slug);
-      el.style.display='none';
-    });
-  }
-}catch(e){console.error('[bob]',e);window.__bobLastError=String(e);}})();`,
+    "code": "(function(){ try { const SLUG = 'reddit-reviews-btn'; function addButton() { const titleDiv = document.getElementById('title_feature_div'); if (!titleDiv) return; if (document.querySelector('[data-bob=\"' + SLUG + '\"]')) return; const productTitleEl = document.getElementById('productTitle'); if (!productTitleEl) return; const productName = productTitleEl.textContent.trim(); if (!productName) return; const redditUrl = 'https://www.reddit.com/search/?q=' + encodeURIComponent(productName + ' review') + '&sort=relevance'; const wrapper = document.createElement('div'); wrapper.setAttribute('data-bob', SLUG); wrapper.style.cssText = 'margin: 6px 0 8px 0; display: flex; align-items: center;'; const btn = document.createElement('a'); btn.href = redditUrl; btn.target = '_blank'; btn.rel = 'noopener noreferrer'; btn.setAttribute('role', 'button'); /* Amazon button base styles */ btn.style.cssText = [ 'display: inline-flex', 'align-items: center', 'gap: 6px', 'padding: 6px 12px', 'font-size: 13px', 'font-family: \"Amazon Ember\", Arial, sans-serif', 'font-weight: 500', 'color: #111', 'background: linear-gradient(to bottom, #f9e4d4 0%, #f5c9a8 100%)', 'border: 1px solid #c0622a', 'border-radius: 3px', 'box-shadow: 0 1px 0 rgba(255,255,255,.4) inset, 0 1px 2px rgba(0,0,0,.15)', 'cursor: pointer', 'text-decoration: none', 'white-space: nowrap', 'transition: filter .1s' ].join(';'); btn.addEventListener('mouseover', function(){ btn.style.filter = 'brightness(0.94)'; }); btn.addEventListener('mouseout', function(){ btn.style.filter = ''; }); /* Reddit Snoo SVG icon */ const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('width', '16'); svg.setAttribute('height', '16'); svg.setAttribute('viewBox', '0 0 20 20'); svg.setAttribute('aria-hidden', 'true'); const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle'); circle.setAttribute('cx', '10'); circle.setAttribute('cy', '10'); circle.setAttribute('r', '10'); circle.setAttribute('fill', '#FF4500'); const snoo = document.createElementNS('http://www.w3.org/2000/svg', 'path'); snoo.setAttribute('fill', 'white'); snoo.setAttribute('d', 'M16.67 10a1.46 1.46 0 0 0-2.47-1 7.12 7.12 0 0 0-3.85-1.23l.65-3.08 2.13.45a1 1 0 1 0 .24-.66l-2.38-.5a.25.25 0 0 0-.3.19l-.73 3.44a7.14 7.14 0 0 0-3.89 1.23 1.46 1.46 0 1 0-1.61 2.39 2.9 2.9 0 0 0 0 .44c0 2.24 2.61 4.06 5.83 4.06s5.83-1.82 5.83-4.06a2.9 2.9 0 0 0 0-.44 1.46 1.46 0 0 0 .46-1.23zM7.27 11a1 1 0 1 1 1 1 1 1 0 0 1-1-1zm5.58 2.65a3.56 3.56 0 0 1-2.85.58 3.56 3.56 0 0 1-2.85-.58.25.25 0 0 1 .35-.35 3.12 3.12 0 0 0 2.5.43 3.12 3.12 0 0 0 2.5-.43.25.25 0 0 1 .35.35zm-.16-1.65a1 1 0 1 1 1-1 1 1 0 0 1-1 1z'); svg.appendChild(circle); svg.appendChild(snoo); const label = document.createElement('span'); label.textContent = 'Reddit reviews'; btn.appendChild(svg); btn.appendChild(label); wrapper.appendChild(btn); titleDiv.insertAdjacentElement ? titleDiv.after(wrapper) : titleDiv.parentNode.insertBefore(wrapper, titleDiv.nextSibling); } if (window.__bobObserve) { window.__bobObserve(addButton, { slug: SLUG }); } else { addButton(); const obs = new MutationObserver(function(){ addButton(); }); obs.observe(document.body, { childList: true, subtree: true }); } } catch(e){ console.error('[bob]', e); window.__bobLastError = String(e); } })();",
+    "createdAt": 1777186747250,
+    "description": "Adds a Reddit-orange styled button next to the Amazon product title that opens a Reddit review search for the current product in a new tab.",
+    "enabled": true,
+    "errorCount": 0,
+    "id": "1a311e22-b5a3-4fe6-a509-fc4493d51743",
+    "iterationNumber": 0,
+    "lastRanAt": 1777187560256,
+    "name": "Reddit Reviews Button",
+    "runCount": 5,
+    "urlPattern": "*://*.amazon.com/*/dp/*",
+    "userPrompt": "On Amazon product pages, add a button next to the product title that says \"Reddit reviews\" — when clicked it should open a new tab with a Reddit search for this product's name plus \"review\". Make the button visually match Amazon's existing buttons but with a Reddit-orange accent. Use window.__bobObserve so it works after navigating between products."
   },
   {
-    name: 'HN Star Titles',
-    description: 'Prepends a star emoji to every Hacker News story title.',
-    urlPattern: '*://news.ycombinator.com/*',
-    userPrompt: 'Add stars to HN titles',
-    code: `(function(){try{
-  var slug='hn-star-titles';
-  function apply(){
-    document.querySelectorAll('.titleline > a:first-child').forEach(function(a){
-      if(a.getAttribute('data-bob')===slug)return;
-      a.setAttribute('data-bob',slug);
-      a.textContent='\\u2b50 '+a.textContent;
-    });
-  }
-  if(window.__bobObserve){window.__bobObserve(slug,apply);}
-  else{apply();}
-}catch(e){console.error('[bob]',e);window.__bobLastError=String(e);}})();`,
+    "code": "(function(){ try {\n  const SLUG = 'wiki-related-sidebar';\n  if (document.querySelector('[data-bob=\"' + SLUG + '\"]')) return;\n\n  // Only run on article pages (not Special:, File:, etc.)\n  const path = location.pathname;\n  if (!/^\\/wiki\\/[^:]+$/.test(path)) return;\n\n  // --- Build sidebar shell immediately ---\n  const sidebar = document.createElement('div');\n  sidebar.setAttribute('data-bob', SLUG);\n  Object.assign(sidebar.style, {\n    position: 'fixed',\n    top: '80px',\n    right: '0',\n    width: '220px',\n    maxHeight: 'calc(100vh - 100px)',\n    overflowY: 'auto',\n    background: '#f8f9fa',\n    borderLeft: '1px solid #a2a9b1',\n    borderBottom: '1px solid #a2a9b1',\n    borderTop: '1px solid #a2a9b1',\n    borderRadius: '2px 0 0 2px',\n    padding: '12px 14px',\n    fontFamily: \"'Linux Libertine', 'Georgia', serif\",\n    fontSize: '13px',\n    lineHeight: '1.5',\n    color: '#202122',\n    zIndex: '9999',\n    boxSizing: 'border-box',\n  });\n\n  const heading = document.createElement('div');\n  Object.assign(heading.style, {\n    fontFamily: \"'Linux Libertine', 'Georgia', serif\",\n    fontSize: '13px',\n    fontWeight: 'bold',\n    borderBottom: '1px solid #a2a9b1',\n    paddingBottom: '6px',\n    marginBottom: '8px',\n    color: '#54595d',\n    letterSpacing: '0.02em',\n    textTransform: 'uppercase',\n  });\n  heading.textContent = 'Related articles';\n  sidebar.appendChild(heading);\n\n  const list = document.createElement('ul');\n  Object.assign(list.style, {\n    listStyle: 'none',\n    margin: '0',\n    padding: '0',\n  });\n  sidebar.appendChild(list);\n\n  const status = document.createElement('li');\n  status.textContent = 'Loading…';\n  Object.assign(status.style, { color: '#54595d', fontStyle: 'italic' });\n  list.appendChild(status);\n\n  document.body.appendChild(sidebar);\n\n  // --- Fetch related articles via MediaWiki API ---\n  const pageTitle = decodeURIComponent(path.replace('/wiki/', ''));\n\n  // Step 1: get internal links from the article\n  const linksUrl = 'https://en.wikipedia.org/w/api.php?action=query&titles='\n    + encodeURIComponent(pageTitle)\n    + '&prop=links&pllimit=50&plnamespace=0&format=json&origin=*';\n\n  fetch(linksUrl)\n    .then(r => r.json())\n    .then(data => {\n      const pages = data.query && data.query.pages;\n      if (!pages) throw new Error('No pages in response');\n      const page = Object.values(pages)[0];\n      const links = (page.links || []).map(l => l.title);\n      // Filter out likely meta pages\n      const filtered = links.filter(t =>\n        !t.startsWith('List of') &&\n        !t.startsWith('Index of') &&\n        t !== pageTitle\n      );\n      // Pick up to 5 spread across the list for variety\n      const step = Math.max(1, Math.floor(filtered.length / 5));\n      const picks = [];\n      for (let i = 0; picks.length < 5 && i < filtered.length; i += step) {\n        picks.push(filtered[i]);\n      }\n      // Fallback: just take first 5 if step logic left gaps\n      if (picks.length < 5) {\n        for (let i = 0; picks.length < 5 && i < filtered.length; i++) {\n          if (!picks.includes(filtered[i])) picks.push(filtered[i]);\n        }\n      }\n      return picks;\n    })\n    .then(titles => {\n      // Step 2: get short descriptions for each title\n      const descUrl = 'https://en.wikipedia.org/w/api.php?action=query&titles='\n        + titles.map(encodeURIComponent).join('|')\n        + '&prop=description&format=json&origin=*';\n      return fetch(descUrl)\n        .then(r => r.json())\n        .then(data => {\n          const pages = data.query && data.query.pages ? Object.values(data.query.pages) : [];\n          return titles.map(t => {\n            const p = pages.find(pg => pg.title === t) || {};\n            return { title: t, description: p.description || '' };\n          });\n        });\n    })\n    .then(articles => {\n      list.removeChild(status);\n      articles.forEach((art, i) => {\n        const li = document.createElement('li');\n        Object.assign(li.style, {\n          marginBottom: i < articles.length - 1 ? '10px' : '0',\n          paddingBottom: i < articles.length - 1 ? '10px' : '0',\n          borderBottom: i < articles.length - 1 ? '1px solid #eaecf0' : 'none',\n        });\n\n        const a = document.createElement('a');\n        a.href = '/wiki/' + encodeURIComponent(art.title.replace(/ /g, '_'));\n        a.textContent = art.title;\n        Object.assign(a.style, {\n          color: '#0645ad',\n          textDecoration: 'none',\n          fontWeight: 'bold',\n          display: 'block',\n          marginBottom: '2px',\n          fontFamily: \"'Linux Libertine', 'Georgia', serif\",\n          fontSize: '13px',\n        });\n        a.addEventListener('mouseenter', () => { a.style.textDecoration = 'underline'; });\n        a.addEventListener('mouseleave', () => { a.style.textDecoration = 'none'; });\n        li.appendChild(a);\n\n        if (art.description) {\n          const desc = document.createElement('span');\n          desc.textContent = art.description.charAt(0).toUpperCase() + art.description.slice(1);\n          Object.assign(desc.style, {\n            color: '#54595d',\n            fontSize: '12px',\n            fontFamily: \"'Helvetica Neue', 'Helvetica', sans-serif\",\n            display: 'block',\n          });\n          li.appendChild(desc);\n        }\n\n        list.appendChild(li);\n      });\n    })\n    .catch(err => {\n      status.textContent = 'Could not load related articles.';\n      console.error('[bob]', err);\n    });\n\n} catch(e){ console.error('[bob]', e); window.__bobLastError = String(e); } })();",
+    "createdAt": 1777195111738,
+    "description": "Fetches 5 related articles from the Wikipedia API and displays them in a fixed right-side sidebar styled to match Wikipedia's native design.",
+    "enabled": true,
+    "errorCount": 0,
+    "id": "f192090a-22fc-443d-b6be-d3e7f2fe928a",
+    "iterationNumber": 0,
+    "lastRanAt": 1777195111745,
+    "name": "Wikipedia Related Articles Sidebar",
+    "runCount": 1,
+    "urlPattern": "*://en.wikipedia.org/wiki/*",
+    "userPrompt": "On Wikipedia article pages, recommend 5 related articles and pin it to the right side of the screen as a fixed-position sidebar that's always visible while scrolling. Style it to feel native to Wikipedia — clean, light background, no shadows, simple typography."
   },
   {
-    name: 'Wikipedia Dim Sidebar',
-    description: 'Dims the Wikipedia sidebar to reduce visual clutter.',
-    urlPattern: '*://*.wikipedia.org/*',
-    userPrompt: 'Dim Wikipedia sidebar',
-    code: `(function(){try{
-  var slug='wp-dim-sidebar';
-  var el=document.getElementById('mw-panel')||document.getElementById('mw-navigation');
-  if(el&&!el.getAttribute('data-bob')){
-    el.setAttribute('data-bob',slug);
-    el.style.opacity='0.5';
-  }
-}catch(e){console.error('[bob]',e);window.__bobLastError=String(e);}})();`,
+    "code": "(function(){ try {\n  const SLUG = 'hn-saved-stories';\n  const STORAGE_KEY = 'bob-hn-saved';\n\n  // ── helpers ──────────────────────────────────────────────────────────────\n  function loadSaved(cb) {\n    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {\n      chrome.storage.local.get([STORAGE_KEY], function(res) { cb(res[STORAGE_KEY] || {}); });\n    } else {\n      try { cb(JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')); }\n      catch(e) { cb({}); }\n    }\n  }\n\n  function persistSaved(saved) {\n    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {\n      chrome.storage.local.set({ [STORAGE_KEY]: saved });\n    } else {\n      localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));\n    }\n  }\n\n  // ── panel ────────────────────────────────────────────────────────────────\n  function getOrCreatePanel() {\n    let panel = document.querySelector('[data-bob=\"' + SLUG + '-panel\"]');\n    if (panel) return panel;\n\n    panel = document.createElement('div');\n    panel.setAttribute('data-bob', SLUG + '-panel');\n    Object.assign(panel.style, {\n      position: 'fixed', bottom: '16px', right: '16px', width: '300px',\n      maxHeight: '420px', background: '#fff', border: '1px solid #ccc',\n      borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,.18)',\n      fontFamily: 'sans-serif', fontSize: '13px', zIndex: '99999',\n      display: 'flex', flexDirection: 'column', overflow: 'hidden'\n    });\n\n    // header\n    const header = document.createElement('div');\n    Object.assign(header.style, {\n      background: '#ff6600', color: '#fff', padding: '7px 10px',\n      fontWeight: 'bold', display: 'flex', alignItems: 'center',\n      justifyContent: 'space-between', flexShrink: '0'\n    });\n    const headerTitle = document.createElement('span');\n    headerTitle.setAttribute('data-bob', SLUG + '-header-title');\n    headerTitle.textContent = 'Saved Stories (0)';\n    header.appendChild(headerTitle);\n\n    const clearBtn = document.createElement('button');\n    clearBtn.textContent = 'Clear all';\n    Object.assign(clearBtn.style, {\n      background: 'rgba(255,255,255,.25)', border: 'none', color: '#fff',\n      borderRadius: '4px', padding: '2px 7px', cursor: 'pointer', fontSize: '11px'\n    });\n    clearBtn.addEventListener('click', function() {\n      persistSaved({});\n      renderPanel({});\n      refreshButtons({});\n    });\n    header.appendChild(clearBtn);\n    panel.appendChild(header);\n\n    // list\n    const list = document.createElement('div');\n    list.setAttribute('data-bob', SLUG + '-list');\n    Object.assign(list.style, {\n      overflowY: 'auto', padding: '6px 8px', flex: '1'\n    });\n    panel.appendChild(list);\n\n    document.body.appendChild(panel);\n    return panel;\n  }\n\n  function renderPanel(saved) {\n    const panel = getOrCreatePanel();\n    const list = panel.querySelector('[data-bob=\"' + SLUG + '-list\"]');\n    const headerTitle = panel.querySelector('[data-bob=\"' + SLUG + '-header-title\"]');\n    const keys = Object.keys(saved);\n    headerTitle.textContent = 'Saved Stories (' + keys.length + ')';\n\n    // clear existing items\n    while (list.firstChild) list.removeChild(list.firstChild);\n\n    if (keys.length === 0) {\n      const empty = document.createElement('div');\n      Object.assign(empty.style, { color: '#999', padding: '8px 2px', textAlign: 'center' });\n      empty.textContent = 'No saved stories yet';\n      list.appendChild(empty);\n      return;\n    }\n\n    keys.forEach(function(id) {\n      const item = saved[id];\n      const row = document.createElement('div');\n      Object.assign(row.style, {\n        display: 'flex', alignItems: 'flex-start', padding: '5px 2px',\n        borderBottom: '1px solid #f0f0f0', gap: '6px'\n      });\n\n      const link = document.createElement('a');\n      link.href = item.url;\n      link.target = '_blank';\n      link.rel = 'noopener noreferrer';\n      link.textContent = item.title;\n      Object.assign(link.style, {\n        flex: '1', color: '#333', textDecoration: 'none',\n        lineHeight: '1.4', wordBreak: 'break-word'\n      });\n      link.addEventListener('mouseover', function() { link.style.textDecoration = 'underline'; });\n      link.addEventListener('mouseout', function() { link.style.textDecoration = 'none'; });\n      row.appendChild(link);\n\n      const xBtn = document.createElement('button');\n      xBtn.textContent = '×';\n      Object.assign(xBtn.style, {\n        border: 'none', background: 'none', color: '#aaa', cursor: 'pointer',\n        fontSize: '16px', lineHeight: '1', padding: '0 2px', flexShrink: '0'\n      });\n      xBtn.title = 'Remove';\n      xBtn.addEventListener('click', function() {\n        loadSaved(function(s) {\n          delete s[id];\n          persistSaved(s);\n          renderPanel(s);\n          refreshButtons(s);\n        });\n      });\n      row.appendChild(xBtn);\n      list.appendChild(row);\n    });\n  }\n\n  // ── buttons ───────────────────────────────────────────────────────────────\n  function refreshButtons(saved) {\n    document.querySelectorAll('[data-bob=\"' + SLUG + '-btn\"]').forEach(function(btn) {\n      const id = btn.getAttribute('data-bob-id');\n      const isSaved = !!saved[id];\n      btn.textContent = isSaved ? 'Saved' : 'Save';\n      btn.style.color = isSaved ? '#fff' : '#888';\n      btn.style.background = isSaved ? '#ff6600' : '#f5f5f5';\n      btn.style.borderColor = isSaved ? '#e05500' : '#ccc';\n    });\n  }\n\n  function applyToRows(saved) {\n    document.querySelectorAll('tr.athing.submission').forEach(function(row) {\n      const id = row.id;\n      if (!id) return;\n      const titleLine = row.querySelector('.titleline');\n      if (!titleLine) return;\n\n      // idempotency — skip if button already added\n      if (titleLine.querySelector('[data-bob=\"' + SLUG + '-btn\"]')) return;\n\n      const anchor = titleLine.querySelector('a');\n      if (!anchor) return;\n      const title = anchor.textContent.trim();\n      const url = anchor.href;\n\n      const btn = document.createElement('button');\n      btn.setAttribute('data-bob', SLUG + '-btn');\n      btn.setAttribute('data-bob-id', id);\n      const isSaved = !!saved[id];\n      btn.textContent = isSaved ? 'Saved' : 'Save';\n      Object.assign(btn.style, {\n        marginLeft: '8px', padding: '1px 7px', fontSize: '11px',\n        cursor: 'pointer', borderRadius: '4px', verticalAlign: 'middle',\n        border: '1px solid', transition: 'all .15s',\n        color: isSaved ? '#fff' : '#888',\n        background: isSaved ? '#ff6600' : '#f5f5f5',\n        borderColor: isSaved ? '#e05500' : '#ccc'\n      });\n\n      btn.addEventListener('click', function(e) {\n        e.preventDefault();\n        loadSaved(function(s) {\n          if (s[id]) {\n            delete s[id];\n          } else {\n            s[id] = { title: title, url: url };\n          }\n          persistSaved(s);\n          renderPanel(s);\n          refreshButtons(s);\n        });\n      });\n\n      titleLine.appendChild(btn);\n    });\n  }\n\n  // ── init ──────────────────────────────────────────────────────────────────\n  loadSaved(function(saved) {\n    getOrCreatePanel();\n    renderPanel(saved);\n    applyToRows(saved);\n  });\n\n  if (typeof window.__bobObserve === 'function') {\n    window.__bobObserve(function() {\n      loadSaved(function(saved) {\n        applyToRows(saved);\n        renderPanel(saved);\n      });\n    }, { slug: SLUG });\n  } else {\n    const obs = new MutationObserver(function() {\n      loadSaved(function(saved) { applyToRows(saved); });\n    });\n    obs.observe(document.body, { childList: true, subtree: true });\n  }\n\n} catch(e){ console.error('[bob]', e); window.__bobLastError = String(e); } })();",
+    "createdAt": 1777187446708,
+    "description": "Adds a Save button next to each Hacker News story title, stores saved stories in chrome.storage.local, and shows them in a fixed bottom-right panel with clickable links and individual remove buttons.",
+    "enabled": true,
+    "errorCount": 3,
+    "id": "2d1992b7-c19b-46bd-8f24-f962322df18a",
+    "iterationNumber": 0,
+    "lastRanAt": 1777194652414,
+    "name": "HN Save Stories Panel",
+    "runCount": 12,
+    "urlPattern": "*://news.ycombinator.com/*",
+    "userPrompt": "On news.ycombinator.com story listings, add a small \"Save\" button next to each story title. When clicked, save that story (title and link) to chrome.storage.local under a key like \"bob-hn-saved\", and add a fixed-position panel at the bottom right of the screen that shows my saved stories with their titles as clickable links. The panel should have a small header with a count, and an \"x\" to remove individual saves. Make the saved-state visible: clicked Save buttons show \"Saved\" in a different color. Use window.__bobObserve since HN paginates with \"More\" links."
   },
   {
-    name: 'Reddit Hide Ads',
-    description: 'Hides promoted posts on Reddit.',
-    urlPattern: '*://*.reddit.com/*',
-    userPrompt: 'Hide Reddit ads',
-    code: `(function(){try{
-  var slug='reddit-hide-ads';
-  function apply(){
-    document.querySelectorAll('[data-promoted="true"], shreddit-ad-post').forEach(function(el){
-      if(el.getAttribute('data-bob')===slug)return;
-      el.setAttribute('data-bob',slug);
-      el.style.display='none';
-    });
-  }
-  if(window.__bobObserve){window.__bobObserve(slug,apply);}
-  else{apply();}
-}catch(e){console.error('[bob]',e);window.__bobLastError=String(e);}})();`,
-  },
-  {
-    name: 'Example.com Tint',
-    description: 'Applies a soft blue tint to example.com.',
-    urlPattern: '*://example.com/*',
-    userPrompt: 'Tint example.com blue',
-    code: `(function(){try{
-  var slug='example-tint';
-  if(document.body.getAttribute('data-bob')===slug)return;
-  document.body.setAttribute('data-bob',slug);
-  document.body.style.backgroundColor='#e8f0fe';
-}catch(e){console.error('[bob]',e);window.__bobLastError=String(e);}})();`,
+    "code": "(function(){ try { var slug='so-clean-copy'; function isPage(){return location.hostname==='stackoverflow.com'&&(/^\\/questions\\/\\d+/.test(location.pathname)||/^\\/a\\/\\d+/.test(location.pathname));} function promptless(text){return String(text||'').replace(/\\r\\n/g,'\\n').split('\\n').map(function(line){return line.replace(/^[\\t ]*(?:(?:>>>|\\.\\.\\.)[\\t ]?|[$>#][\\t ]+)/,'');}).join('\\n');} function copyText(text){if(navigator.clipboard&&window.isSecureContext){return navigator.clipboard.writeText(text);}return new Promise(function(resolve,reject){var ta=document.createElement('textarea');ta.setAttribute('data-bob',slug);ta.value=text;ta.style.position='fixed';ta.style.left='-9999px';ta.style.top='0';document.body.appendChild(ta);ta.focus();ta.select();try{document.execCommand('copy')?resolve():reject(new Error('copy failed'));}catch(e){reject(e);}finally{ta.remove();}});} function firstCode(pre){for(var i=0;i<pre.children.length;i++){if(pre.children[i].tagName==='CODE')return pre.children[i];}return null;} function hasBob(pre){for(var i=0;i<pre.children.length;i++){if(pre.children[i].getAttribute('data-bob')===slug)return true;}return false;} function enhance(pre){if(hasBob(pre))return;var code=firstCode(pre);if(!code)return;if(getComputedStyle(pre).position==='static')pre.style.position='relative';var btn=document.createElement('button');btn.setAttribute('data-bob',slug);btn.type='button';btn.textContent='Copy';btn.title='Copy without shell or Python prompts';btn.setAttribute('aria-label','Copy code without prompts');btn.style.position='absolute';btn.style.right='6px';btn.style.bottom='6px';btn.style.zIndex='20';btn.style.padding='3px 7px';btn.style.fontSize='12px';btn.style.lineHeight='1.2';btn.style.border='1px solid #babfc4';btn.style.borderRadius='4px';btn.style.background='#f8f9f9';btn.style.color='#232629';btn.style.cursor='pointer';btn.style.opacity='0.78';btn.style.boxShadow='0 1px 2px rgba(0,0,0,.12)';btn.addEventListener('mouseenter',function(){btn.style.opacity='1';});btn.addEventListener('mouseleave',function(){btn.style.opacity='0.78';});btn.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();var label='Copy';copyText(promptless(code.textContent)).then(function(){btn.textContent='Copied';setTimeout(function(){if(btn.isConnected)btn.textContent=label;},1200);},function(err){console.error('[bob]',err);window.__bobLastError=String(err);btn.textContent='Failed';setTimeout(function(){if(btn.isConnected)btn.textContent=label;},1500);});});pre.appendChild(btn);} function apply(){if(!isPage())return;var pres=document.querySelectorAll('.js-post-body pre, .s-prose pre, pre');for(var i=0;i<pres.length;i++)enhance(pres[i]);} if(window.__bobObserve){window.__bobObserve(apply,{slug:slug});}else{if(window.__bobCleanCopyObserver)window.__bobCleanCopyObserver.disconnect();apply();var t=0;var mo=new MutationObserver(function(){clearTimeout(t);t=setTimeout(apply,150);});if(document.body)mo.observe(document.body,{childList:true,subtree:true});window.__bobCleanCopyObserver=mo;} } catch(e){ console.error('[bob]', e); window.__bobLastError = String(e); } })();",
+    "createdAt": 1777194231837,
+    "description": "Adds a bottom-right Copy button to Stack Overflow code blocks that copies code with shell and Python REPL prompts stripped.",
+    "enabled": true,
+    "errorCount": 0,
+    "id": "9be2c604-161e-47ac-86a9-71ca60012ab0",
+    "iterationNumber": 0,
+    "lastRanAt": 1777194473381,
+    "name": "Clean Code Copy",
+    "runCount": 2,
+    "urlPattern": "*://stackoverflow.com/*",
+    "userPrompt": "On any Stack Overflow question/answer page, every <pre><code> block gets a small \"Copy\" button in its bottom-right corner. When clicked, it copies the code, but strips leading shell prompts ($ , > , # ) and Python REPL markers (>>> , ... ) from each line — so pasting actually runs."
   },
 ];
 
