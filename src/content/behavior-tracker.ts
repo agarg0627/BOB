@@ -37,6 +37,27 @@ const MAX_TEXT = 80;
 const MAX_PARENT_WALK = 4;
 
 const REVISITS_KEY = 'revisits';
+const RECENT_VISITS_KEY = 'recentVisits';
+const SITE_SEQUENCES_KEY = 'siteSequences';
+const SEARCH_ARRIVALS_KEY = 'searchArrivals';
+
+// Cross-site sequence detection (e.g. amazon.com → reddit.com).
+const RECENT_VISITS_MAX = 30;
+const SITE_SEQUENCE_WINDOW_MS = 5 * 60_000;
+const SITE_SEQUENCE_DEDUP_MS = 30_000; // tab refreshes don't double-count
+const SITE_SEQUENCE_MIN_COUNT = 3;
+const SITE_SEQUENCE_GC_MS = 30 * 24 * 60 * 60_000;
+
+// "User keeps searching for this site" — hostname is the destination.
+const SEARCH_ARRIVAL_WINDOW_MS = 7 * 24 * 60 * 60_000;
+const SEARCH_ARRIVAL_MIN_COUNT = 3;
+const SEARCH_ARRIVAL_CAP = 20;
+const SEARCH_REFERRER_RE =
+  /^https?:\/\/(?:[\w-]+\.)*(?:google\.|bing\.com|duckduckgo\.com|search\.brave\.com|search\.yahoo\.com|kagi\.com|ecosia\.org)/i;
+
+// Shorts / reels doomscroll detection.
+const SHORTS_DOOMSCROLL_THRESHOLD_MS = 15_000;
+const SHORTS_SCROLL_GAP_MS = 1_500; // gap considered "stopped scrolling"
 
 const SENSITIVE_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
 
@@ -58,6 +79,14 @@ let dwellSent = false;
 type ScrollSample = { y: number; t: number };
 const scrollBuffer: ScrollSample[] = [];
 let scrollBackbounceFiredAt = 0;
+
+// Shorts/reels doomscroll counters. Active-scroll milliseconds are
+// accumulated only while consecutive scroll events are within
+// SHORTS_SCROLL_GAP_MS of each other; longer gaps "rest" the counter
+// without resetting it. Fires once per visit when threshold is crossed.
+let shortsActiveScrollMs = 0;
+let shortsLastScrollTs = 0;
+let shortsDoomscrollFired = false;
 
 function safeText(s: unknown): string {
   if (typeof s !== 'string') return '';
@@ -317,6 +346,9 @@ function resetDwell(): void {
 // at the back-bounce position.
 function onScroll(): void {
   resetDwell();
+  // Accumulate shorts/reels active-scroll time before any other work
+  // so a slow back-bounce path doesn't shadow the doomscroll signal.
+  maybeAccumulateShortsScroll();
   const now = Date.now();
   const y = window.scrollY || window.pageYOffset || 0;
 
@@ -433,6 +465,222 @@ async function maybeFireRapidRevisit(): Promise<void> {
   }
 }
 
+// ---- Shorts / reels doomscroll ----
+//
+// Detect the URL surfaces that are infinite scroll feeds of short-form
+// video, then accumulate active-scroll time. "Active" = scroll events
+// within SHORTS_SCROLL_GAP_MS of each other; idle gaps don't count.
+// Once the active-scroll counter crosses SHORTS_DOOMSCROLL_THRESHOLD_MS
+// we fire one event per page visit.
+function isShortsOrReelsUrl(): boolean {
+  const path = location.pathname;
+  if (trackedHostname.includes('youtube.com')) {
+    if (path.startsWith('/shorts')) return true;
+  }
+  if (trackedHostname.includes('instagram.com')) {
+    if (path.startsWith('/reels') || /^\/reel\//.test(path)) return true;
+    if (path.startsWith('/explore')) return true;
+  }
+  if (trackedHostname.includes('tiktok.com')) {
+    // TikTok's home and FYP are infinite-scroll. Anything that's not a
+    // settings/about page counts as feed.
+    return true;
+  }
+  return false;
+}
+
+function maybeAccumulateShortsScroll(): void {
+  if (shortsDoomscrollFired) return;
+  if (!isShortsOrReelsUrl()) return;
+
+  const now = Date.now();
+  if (shortsLastScrollTs > 0 && now - shortsLastScrollTs <= SHORTS_SCROLL_GAP_MS) {
+    shortsActiveScrollMs += now - shortsLastScrollTs;
+  }
+  shortsLastScrollTs = now;
+
+  if (shortsActiveScrollMs >= SHORTS_DOOMSCROLL_THRESHOLD_MS) {
+    shortsDoomscrollFired = true;
+    send({
+      type: 'shorts_doomscroll',
+      url: location.href,
+      hostname: trackedHostname,
+      timestamp: now,
+      metadata: {
+        activeScrollMs: shortsActiveScrollMs,
+        surface: location.pathname,
+      },
+    });
+  }
+}
+
+// ---- Cross-site sequence detection ----
+//
+// Maintains a ring of the user's last RECENT_VISITS_MAX page visits in
+// chrome.storage.local. On init, look at the most recent OTHER hostname
+// from within SITE_SEQUENCE_WINDOW_MS — if found, that's the "from" and
+// the current page is the "to". Increment the (from, to) counter and,
+// when it crosses SITE_SEQUENCE_MIN_COUNT, fire a `site_sequence` event
+// scoped to the FROM hostname (so the suggestion appears on the site
+// where the link/button would be installed).
+async function logVisitAndDetectSequence(): Promise<void> {
+  if (SENSITIVE_HOST_RE.test(trackedHostname)) return;
+
+  try {
+    const r = await chrome.storage.local.get([
+      RECENT_VISITS_KEY,
+      SITE_SEQUENCES_KEY,
+    ]);
+    const rec = (r as Record<string, unknown>)[RECENT_VISITS_KEY];
+    let recent: Array<{ hostname: string; ts: number }> = Array.isArray(rec)
+      ? (rec as Array<{ hostname: string; ts: number }>)
+      : [];
+    const now = Date.now();
+
+    // Look for the most recent visit to a DIFFERENT hostname within the
+    // sequence window. If present, that's the "from" of an A→B sequence.
+    let fromHost: string | null = null;
+    for (let i = recent.length - 1; i >= 0; i--) {
+      const v = recent[i];
+      if (!v || typeof v.ts !== 'number') continue;
+      if (now - v.ts > SITE_SEQUENCE_WINDOW_MS) break; // older than window
+      if (v.hostname && v.hostname !== trackedHostname) {
+        fromHost = v.hostname;
+        break;
+      }
+    }
+
+    // Append current visit, trim ring.
+    recent.push({ hostname: trackedHostname, ts: now });
+    if (recent.length > RECENT_VISITS_MAX) {
+      recent = recent.slice(-RECENT_VISITS_MAX);
+    }
+
+    const seqMap = (r as Record<string, unknown>)[SITE_SEQUENCES_KEY];
+    type SeqRow = { from: string; to: string; count: number; lastSeen: number };
+    const seqs: Record<string, SeqRow> =
+      seqMap && typeof seqMap === 'object'
+        ? (seqMap as Record<string, SeqRow>)
+        : {};
+
+    if (fromHost && !SENSITIVE_HOST_RE.test(fromHost)) {
+      const key = `${fromHost}::${trackedHostname}`;
+      const existing = seqs[key];
+      let crossedThreshold = false;
+      let isMilestone = false;
+      if (existing) {
+        // Tab refreshes / quick back-and-forth shouldn't double-count.
+        if (now - existing.lastSeen < SITE_SEQUENCE_DEDUP_MS) {
+          // skip increment; still write recent ring below
+        } else {
+          existing.count += 1;
+          existing.lastSeen = now;
+          if (existing.count === SITE_SEQUENCE_MIN_COUNT) crossedThreshold = true;
+          // Re-emit periodically past the threshold so the LLM sees
+          // ongoing reinforcement.
+          if (
+            existing.count > SITE_SEQUENCE_MIN_COUNT &&
+            (existing.count - SITE_SEQUENCE_MIN_COUNT) % 5 === 0
+          ) {
+            isMilestone = true;
+          }
+        }
+      } else {
+        seqs[key] = { from: fromHost, to: trackedHostname, count: 1, lastSeen: now };
+      }
+
+      // Garbage-collect stale sequence rows so the map stays bounded.
+      const gcCutoff = now - SITE_SEQUENCE_GC_MS;
+      for (const k of Object.keys(seqs)) {
+        if (seqs[k].lastSeen < gcCutoff) delete seqs[k];
+      }
+
+      if (crossedThreshold || isMilestone) {
+        const row = seqs[key];
+        send({
+          type: 'site_sequence',
+          url: location.href,
+          // The suggestion needs to land on the ORIGIN site; that's
+          // where the link/button would be installed.
+          hostname: fromHost,
+          timestamp: now,
+          metadata: { from: fromHost, to: trackedHostname, count: row.count },
+        });
+      }
+    }
+
+    await chrome.storage.local.set({
+      [RECENT_VISITS_KEY]: recent,
+      [SITE_SEQUENCES_KEY]: seqs,
+    });
+  } catch {
+    // best-effort
+  }
+}
+
+// ---- Frequent search destination ----
+//
+// On page init, if document.referrer is from a known search engine,
+// log this arrival under the destination hostname. After
+// SEARCH_ARRIVAL_MIN_COUNT arrivals in the rolling 7-day window, fire
+// a `frequent_search_destination` event so the LLM can suggest making
+// the destination easier to reach (auto-bookmark, pinned tab, etc).
+async function detectSearchArrival(): Promise<void> {
+  if (SENSITIVE_HOST_RE.test(trackedHostname)) return;
+
+  let referrer = '';
+  try {
+    referrer = document.referrer || '';
+  } catch {
+    return;
+  }
+  if (!referrer || !SEARCH_REFERRER_RE.test(referrer)) return;
+
+  let referrerHost = '';
+  try {
+    referrerHost = new URL(referrer).hostname.toLowerCase();
+  } catch {
+    return;
+  }
+
+  try {
+    const r = await chrome.storage.local.get(SEARCH_ARRIVALS_KEY);
+    const map = (r as Record<string, unknown>)[SEARCH_ARRIVALS_KEY];
+    const safeMap: Record<string, number[]> =
+      map && typeof map === 'object'
+        ? (map as Record<string, number[]>)
+        : {};
+    const now = Date.now();
+    const cutoff = now - SEARCH_ARRIVAL_WINDOW_MS;
+    let arr = Array.isArray(safeMap[trackedHostname])
+      ? safeMap[trackedHostname]
+      : [];
+    arr = arr.filter((t) => typeof t === 'number' && t >= cutoff);
+    arr.push(now);
+    if (arr.length > SEARCH_ARRIVAL_CAP) {
+      arr = arr.slice(-SEARCH_ARRIVAL_CAP);
+    }
+    safeMap[trackedHostname] = arr;
+    await chrome.storage.local.set({ [SEARCH_ARRIVALS_KEY]: safeMap });
+
+    const isFirstCross = arr.length === SEARCH_ARRIVAL_MIN_COUNT;
+    const isMilestone =
+      arr.length > SEARCH_ARRIVAL_MIN_COUNT &&
+      (arr.length - SEARCH_ARRIVAL_MIN_COUNT) % 3 === 0;
+    if (isFirstCross || isMilestone) {
+      send({
+        type: 'frequent_search_destination',
+        url: location.href,
+        hostname: trackedHostname,
+        timestamp: now,
+        metadata: { count: arr.length, referrer: referrerHost },
+      });
+    }
+  } catch {
+    // best-effort
+  }
+}
+
 function startTimeOnSite(): void {
   if (SENSITIVE_HOST_RE.test(trackedHostname)) return;
   if (timeInterval !== null) return;
@@ -501,4 +749,6 @@ export function initBehaviorTracker(): void {
   startTimeOnSite();
   startDwell();
   void maybeFireRapidRevisit();
+  void logVisitAndDetectSequence();
+  void detectSearchArrival();
 }

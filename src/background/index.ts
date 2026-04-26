@@ -9,15 +9,60 @@ import {
   setSuggestionState,
   dismissSuggestion,
   acceptSuggestion,
+  debugForceSuggestions,
+  debugSuggestionsState,
 } from './suggestions-engine';
 import type { GenerateRequest, Message } from '../shared/types';
 
+// Initialize storage keys with empty defaults so:
+//   1. Inspecting `chrome.storage.local` on a fresh install shows the
+//      expected shape (no `undefined` for `suggestions` etc.)
+//   2. Schema migrations can rely on a known starting point later.
+// Idempotent: only sets keys that aren't already present.
+async function initializeStorageDefaults(): Promise<void> {
+  try {
+    const existing = await chrome.storage.local.get([
+      'behavior',
+      'suggestions',
+      'suggestionsMeta',
+      'recentVisits',
+      'siteSequences',
+      'searchArrivals',
+      'revisits',
+    ]);
+    const patch: Record<string, unknown> = {};
+    if (!Array.isArray(existing.behavior)) patch.behavior = [];
+    if (!Array.isArray(existing.suggestions)) patch.suggestions = [];
+    if (!existing.suggestionsMeta || typeof existing.suggestionsMeta !== 'object') {
+      patch.suggestionsMeta = { lastAnalyzedAt: {}, lastLlmAnalyzedAt: {} };
+    }
+    if (!Array.isArray(existing.recentVisits)) patch.recentVisits = [];
+    if (!existing.siteSequences || typeof existing.siteSequences !== 'object') {
+      patch.siteSequences = {};
+    }
+    if (!existing.searchArrivals || typeof existing.searchArrivals !== 'object') {
+      patch.searchArrivals = {};
+    }
+    if (!existing.revisits || typeof existing.revisits !== 'object') {
+      patch.revisits = {};
+    }
+    if (Object.keys(patch).length > 0) {
+      await chrome.storage.local.set(patch);
+      console.log('[bob] initialized storage defaults:', Object.keys(patch));
+    }
+  } catch (e) {
+    console.warn('[bob] storage init failed:', e);
+  }
+}
+
 chrome.runtime.onInstalled.addListener(() => {
-  console.log('[ext] background started');
+  console.log('[ext] background started (onInstalled)');
+  void initializeStorageDefaults();
 });
 
 chrome.runtime.onStartup.addListener(() => {
-  console.log('[ext] background started');
+  console.log('[ext] background started (onStartup)');
+  void initializeStorageDefaults();
 });
 
 chrome.runtime.onMessage.addListener(
@@ -299,6 +344,19 @@ chrome.runtime.onMessage.addListener(
               count++;
             }
             sendResponse({ count });
+            break;
+          }
+          case 'DEBUG_FORCE_SUGGESTIONS': {
+            // Bypass throttles and run heuristic + LLM analysis right
+            // now for the requested hostname. Returns a small report
+            // so the SW console can verify it actually ran.
+            const report = await debugForceSuggestions(msg.hostname);
+            sendResponse(report);
+            break;
+          }
+          case 'DEBUG_SUGGESTIONS_STATE': {
+            const report = await debugSuggestionsState(msg.hostname);
+            sendResponse(report);
             break;
           }
           default: {

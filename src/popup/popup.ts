@@ -1216,3 +1216,25 @@ async function boot(): Promise<void> {
 }
 
 void boot();
+
+// Live refresh: when background writes to suggestions or features
+// while the popup is open (e.g. an async LLM call lands a result
+// after we already rendered), pull the new state and re-render
+// instead of waiting for the user to close + reopen.
+try {
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local') return;
+    if (!('suggestions' in changes) && !('features' in changes)) return;
+    void (async () => {
+      const [features, suggestions] = await Promise.all([
+        loadFeatures(),
+        loadSuggestions(state.hostname),
+      ]);
+      state.features = features;
+      state.suggestions = suggestions;
+      render();
+    })();
+  });
+} catch {
+  // chrome.storage may be unavailable in some sandboxed contexts.
+}
