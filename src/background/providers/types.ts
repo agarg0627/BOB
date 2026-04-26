@@ -18,7 +18,7 @@ export interface ProviderTurnResponse {
 }
 
 export interface ToolDefinition {
-  name: 'query_dom' | 'test_code';
+  name: 'query_dom' | 'test_code' | 'fetch_url';
   description: string;
   inputSchema: object;
 }

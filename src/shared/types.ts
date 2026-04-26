@@ -19,7 +19,7 @@ export interface RefinementTurn {
 
 export interface ToolCall {
   id: string;
-  name: 'query_dom' | 'test_code';
+  name: 'query_dom' | 'test_code' | 'fetch_url';
   input: Record<string, unknown>;
 }
 
