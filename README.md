@@ -176,7 +176,7 @@ src/
     ui-scale.ts           Overlay scaling
 ```
 
-~6,000 lines of TypeScript. Zero runtime dependencies.
+~9,700 lines of TypeScript. Zero runtime dependencies.
 
 
 ## FAQ
